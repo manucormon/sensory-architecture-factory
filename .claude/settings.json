@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 stop_until_green.py --tests --timeout 60"
+          }
+        ]
+      }
+    ]
+  }
+}

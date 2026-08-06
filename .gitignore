@@ -45,6 +45,11 @@ secrets.yaml
 secrets.json
 credentials.json
 
+# --- Claude Code ---
+# Commit .claude/settings.json (project hooks) but not session caches
+.claude/todos/
+.claude/*.log
+
 # --- OS / editor ---
 .DS_Store
 Thumbs.db
