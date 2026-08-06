@@ -10,7 +10,49 @@ data, whatever exists) into whatever shape `load_model.py` needs.
 F1 reference: `instances/f1/data_loader.py` — reads two CSVs, coerces
 types. Yours will look nothing like this; that's expected.
 
-## 2. `load_model.py`
+## 2. `perception.py`
+Sits between `data_loader.py` and `load_model.py` in the pipeline. Its
+job is narrow: extract the spatial/relational state that load_model.py
+needs — positions, distances, or trajectories of whatever objects matter
+in this domain — without doing any load arithmetic itself.
+
+Every field in the perceptual state must carry one of three labels:
+
+  **MEASURED** — the value arrived pre-computed from an external system;
+  nobody in this repo tracked anything. F1's `DistanceToDriverAhead`
+  is the reference example: the FIA timing system computed it; the
+  telemetry file delivered it; perception.py reads it through. High
+  confidence; the external system is the source of truth.
+
+  **TRACKED** — the value was actively computed here, from raw sensor or
+  video input, by code in this repo. As of this writing, no instance in
+  the factory has a TRACKED field — building a real tracker is a
+  separate, larger project. If your domain genuinely needs tracking,
+  say so in NOTES.md and leave the field as a stub rather than faking
+  MEASURED confidence for something you actually derived.
+
+  **PREDICTED** — the value is extrapolated forward from tracked or
+  measured state: where will the object be in N frames, not where is it
+  now. Explicitly optional — most instances will not have this, and
+  that is fine. Do not add prediction to fill a slot; add it only if
+  the domain's load model or reflex trigger actually depends on it.
+
+Do not blur MEASURED and TRACKED. They carry different confidence and
+different failure modes: a MEASURED field fails when the external system
+fails; a TRACKED field fails when the tracking algorithm fails. A
+governance engine that treats them as equivalent is making a silent
+confidence claim it has no right to make.
+
+Not every domain has meaningful spatial state to extract. If yours
+doesn't, `perception.py` may be a thin passthrough that returns the
+raw samples unchanged — declare that plainly in the docstring rather
+than inventing structure to fill the slot.
+
+F1 reference: `instances/f1/perception.py` — a thin passthrough that
+reads `DistanceToDriverAhead` (MEASURED) directly from the telemetry
+DataFrame. No tracking, no prediction.
+
+## 3. `load_model.py`
 The honest core of the adapter: derive a `load` array (0..1) and its
 complement `attention = 1 - load` from your domain's raw signal.
 Label explicitly whether each input is REAL (measured), a PROXY
@@ -18,12 +60,12 @@ Label explicitly whether each input is REAL (measured), a PROXY
 convention) — same discipline as F1's telemetry-as-proxy-for-biometrics
 note. Never blur the three.
 
-## 3. `reflex_trigger.py`
+## 4. `reflex_trigger.py`
 Define the one condition that bypasses the budget entirely, if your
 domain has one. Not every domain needs this — declare `None` if it
 doesn't, rather than forcing a fake trigger to fill the slot.
 
-## 4. `config.py` — tuned, not copied
+## 5. `config.py` — tuned, not copied
 ```python
 CHANNELS = [
     # name, priority, cost, note — TUNE THESE. Do not reuse F1's
@@ -39,7 +81,7 @@ Copying F1's numbers here is the single most likely way to quietly
 smuggle F1's assumptions into a domain where they don't hold — see
 the Voice-cost finding below.
 
-## 5. Two declarations, in `NOTES.md`, before writing any code
+## 6. Two declarations, in `NOTES.md`, before writing any code
 
 **Does this domain have a structured recovery window?**
 A phase where load reliably drops and stays down long enough for a

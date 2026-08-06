@@ -23,6 +23,12 @@ core/channels_schema.py     the 5-channel taxonomy + CORE_VERSION — declared
 
 instances/<domain>/         one fabricated piece per domain.
   data_loader.py             reads this domain's raw signal.
+  perception.py              extracts spatial/relational state (positions,
+                               distances, trajectories). Sits between
+                               data_loader and load_model. Every field must
+                               be labeled MEASURED / TRACKED / PREDICTED.
+                               May be a thin passthrough if the domain has
+                               no meaningful spatial state to extract.
   load_model.py               derives load (0..1) from it — label every
                                input REAL / PROXY / DECLARED.
   reflex_trigger.py           the budget-bypass condition, or none.
@@ -70,8 +76,10 @@ The orchestrator asks the two CONTRACT.md questions, scaffolds
 4. Tune `config.py`: set CHANNELS costs, SAMPLE_RATE_HZ, confirm
    CORE_VERSION_REQUIRED. Do not reuse F1's costs without checking —
    Voice alone has shown opposite tunings across domains.
-5. Implement `data_loader.py`, `load_model.py` (label every input
-   REAL / PROXY / DECLARED), `reflex_trigger.py`, `run.py`.
+5. Implement `data_loader.py`, `perception.py` (label every field
+   MEASURED / TRACKED / PREDICTED; passthrough is fine if no spatial
+   state is needed), `load_model.py` (label every input REAL / PROXY /
+   DECLARED), `reflex_trigger.py`, `run.py`.
 6. Add `tests/test_<domain>_instance.py` (pattern: test_f1_instance.py).
 7. Run `python3 stop_until_green.py`. Don't call it done until it passes.
 
