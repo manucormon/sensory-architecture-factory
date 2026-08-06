@@ -41,6 +41,26 @@
       "baseline_csv": null,
       "last_verified": "2026-08-06",
       "notes": "Exists to stress-test the deferred queue, not as a real product capability. Voice cheap by design \u2014 coaching belongs in the recovery window. Multi-timescale load (fatigue) declared out of scope for this version."
+    },
+    "cycling": {
+      "status": "verified",
+      "governed_subject": null,
+      "data_provenance": "DECLARED \u2014 synthetic mountain-stage power profiles, no real sensor",
+      "has_recovery_window": true,
+      "has_multi_timescale_load": true,
+      "has_reflex": true,
+      "channel_costs": {
+        "Touch": 0.0,
+        "Sound": 0.1,
+        "Vision": 0.2,
+        "Presence": 0.1,
+        "Voice": 0.2
+      },
+      "voice_opens_at_most_open_moment": true,
+      "test_file": "tests/test_cycling_instance.py",
+      "baseline_csv": null,
+      "last_verified": "2026-08-06",
+      "notes": "Two-timescale load: instant power + accumulated fatigue. Voice opens on descent (attention=0.74) \u2014 opposite finding from F1. Tuning history documented in config.py."
     }
   }
 }
