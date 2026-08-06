@@ -1,0 +1,53 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Instance data: never commit raw telemetry or derived outputs ---
+# Raw signal files (real or synthetic) stay local; add them to the
+# instance's own data/ dir, never to version control.
+instances/*/data/*.csv
+instances/*/data/*.parquet
+instances/*/data/*.json
+
+# Derived output CSVs produced by run.py (ver_governed.csv etc.)
+# Baselines in tests/fixtures/ ARE committed — they are the contract.
+instances/*/*.csv
+
+# Generated figures
+instances/*/*.png
+instances/*/*.pdf
+instances/*/*.svg
+
+# --- knowledge/ classification guard ---
+# Files without a classification header are blocked by pre_commit_hook.py.
+# Unclassified drafts should live outside the repo until they are labeled.
+knowledge/*.draft.md
+
+# --- Secrets / credentials ---
+.env
+.env.*
+*.pem
+*.key
+secrets.yaml
+secrets.json
+credentials.json
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,46 @@
+{
+  "_schema": "1.0",
+  "_note": "Source of truth for fabricated instances. Managed by orchestrator.py \u2014 do not edit by hand. Every field that says null means the instance needs human input before it can be verified.",
+  "instances": {
+    "f1": {
+      "status": "verified",
+      "governed_subject": "VER \u2014 Max Verstappen, Abu Dhabi 2021 final lap",
+      "data_provenance": "PROXY \u2014 car telemetry stands in for biometric load",
+      "has_recovery_window": true,
+      "has_multi_timescale_load": false,
+      "has_reflex": true,
+      "channel_costs": {
+        "Touch": 0.0,
+        "Sound": 0.25,
+        "Vision": 0.4,
+        "Presence": 0.15,
+        "Voice": 0.7
+      },
+      "voice_opens_at_most_open_moment": false,
+      "test_file": "tests/test_f1_instance.py",
+      "baseline_csv": "tests/fixtures/ver_governed_baseline.csv",
+      "last_verified": "2026-08-06",
+      "notes": "Voice stays closed even at attention=0.93 (the open straight). Documented finding, not a bug \u2014 Sound+Vision+Presence consume the budget first by priority."
+    },
+    "tennis": {
+      "status": "hypothetical",
+      "governed_subject": "Generic player, synthetic rally sequence",
+      "data_provenance": "DECLARED \u2014 all numbers invented to test queue resolution, no real sensor",
+      "has_recovery_window": true,
+      "has_multi_timescale_load": false,
+      "has_reflex": false,
+      "channel_costs": {
+        "Touch": 0.0,
+        "Sound": 0.2,
+        "Vision": 0.35,
+        "Presence": 0.15,
+        "Voice": 0.2
+      },
+      "voice_opens_at_most_open_moment": true,
+      "test_file": "tests/test_tennis_instance.py",
+      "baseline_csv": null,
+      "last_verified": "2026-08-06",
+      "notes": "Exists to stress-test the deferred queue, not as a real product capability. Voice cheap by design \u2014 coaching belongs in the recovery window. Multi-timescale load (fatigue) declared out of scope for this version."
+    }
+  }
+}
