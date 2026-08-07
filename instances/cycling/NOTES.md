@@ -1,28 +1,29 @@
 # NOTES — cycling instance
 
-Status: SCAFFOLDED. Not yet implemented or verified. Do not present as a
-real product capability until status reaches 'verified' in instance_registry.json.
+Status: VERIFIED. See instance_registry.json — last_verified 2026-08-07.
 
-## Contract declarations (required before writing code — CONTRACT.md §5)
+Upgraded from DECLARED synthetic data to real GoldenCheetah OpenData
+(OSF DOI: 10.17605/OSF.IO/6HFPZ). Anonymised cyclist, mountain loop,
+2019-12-28. 79 min, 339m elevation, 4762 samples at 1Hz.
 
-**HAS_RECOVERY_WINDOW = True.**
-True — describe the recovery window here (ruled or geographic?).
+## Data provenance (per instance_registry.json)
 
-**HAS_MULTI_TIMESCALE_LOAD = True.**
-True — load stacks two timescales (instantaneous + accumulated). load_model.py must return both components separately.
+  power_w       — REAL (power meter)
+  gradient_pct  — MEASURED (GPS altitude, 60s central-difference window)
+  phase         — PROXY (gradient threshold: >2% → climb, <-2% → descent)
+  FTP = 240W    — PROXY (95% of best 20-min rolling power — industry
+                  standard estimate, not a lab VO2 test)
 
-## Labeling discipline
+## Contract declarations
 
-Every number feeding the governance decision in load_model.py must be labeled:
-  REAL     — actually measured
-  PROXY    — stands in for something you don't have (say for what)
-  DECLARED — a design convention, not a measurement
+  HAS_RECOVERY_WINDOW      = True  — geographic (descent segments)
+  HAS_MULTI_TIMESCALE_LOAD = True  — instant (power/FTP) + TSS-inspired fatigue
+  HAS_REFLEX               = False — no crash labels in real data
+  HAS_PERCEPTION           = True  — perception.py validates gradient_pct and phase
 
-## Checklist before calling this instance done
+## Key verified finding
 
-See TEMPLATE_arnes_base/verification/checklist.md. In particular:
-- Tune CHANNELS costs in config.py for THIS domain (do not copy F1's numbers unchecked).
-- Run the Voice-admission check: does a fresh Voice request open at this domain's
-  most-open realistic moment? Know the answer before shipping.
-- Add tests/test_cycling_instance.py and verify against a stored baseline.
-- Run: python3 stop_until_green.py
+Voice opens on descent (coasting, power ≈ 0W) and closes at climb peak.
+Confirmed against real power-meter trace — not a synthetic assumption.
+Tests: test_voice_opens_on_descent_with_fresh_request(),
+       test_voice_closed_at_climb_peak() in tests/test_cycling_instance.py.
