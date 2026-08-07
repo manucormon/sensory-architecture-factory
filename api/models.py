@@ -8,7 +8,7 @@ reminded they need to declare it — the discipline travels through the wire.
 """
 
 from __future__ import annotations
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -34,13 +34,21 @@ class GovernRequest(BaseModel):
     reflex_active: bool = False
     voice_requested: bool = False
     risk_present: bool = False
+    observe_only: bool = Field(
+        False,
+        description="Shadow mode: run all logic but mark response as observation-only. "
+                    "Actuation is the client's responsibility — this flag tells it not to."
+    )
 
 
 class GovernResponse(BaseModel):
+    transaction_id: str
     active_channels: List[str]
     budget_consumed: float
     budget_remaining: float
     reflex_fired: bool
+    shadow_mode: bool = False
+    shadow_blocked: List[str] = []
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +72,16 @@ class ENMAXGovernRequest(BaseModel):
     shift_elapsed_h:  float = Field(..., ge=0.0, le=24.0,
                                     description="Hours into the shift")
     voice_requested:  bool = False
+    voice_ttl_s:      float = Field(
+        30.0, ge=1.0,
+        description="Seconds before a blocked Voice request is considered stale. "
+                    "If Voice is blocked, voice_retry_before in the response marks "
+                    "the deadline — retry after that delivers a stale alert."
+    )
+    observe_only: bool = Field(
+        False,
+        description="Shadow mode: engine runs but client should not actuate."
+    )
     data_provenance:  str = Field(
         "DECLARED",
         description="REAL | PROXY | DECLARED — label for the metrics in this request"
@@ -82,6 +100,14 @@ class CyclingGovernRequest(BaseModel):
     shift_elapsed_s: float = Field(..., ge=0.0,
                                    description="Seconds elapsed in the ride")
     voice_requested: bool = False
+    voice_ttl_s:     float = Field(
+        30.0, ge=1.0,
+        description="Seconds before a blocked Voice request is considered stale."
+    )
+    observe_only: bool = Field(
+        False,
+        description="Shadow mode: engine runs but client should not actuate."
+    )
     data_provenance: str = Field(
         "REAL",
         description="REAL | PROXY | DECLARED — label for the metrics in this request"
@@ -89,6 +115,7 @@ class CyclingGovernRequest(BaseModel):
 
 
 class DomainGovernResponse(BaseModel):
+    transaction_id: str
     domain: str
     active_channels: List[str]
     budget: float
@@ -98,6 +125,20 @@ class DomainGovernResponse(BaseModel):
     reflex_fired: bool
     data_provenance: str
     governance_note: str = ""
+    shadow_mode: bool = False
+    shadow_blocked: List[str] = []
+    voice_retry_before: Optional[str] = Field(
+        None,
+        description="ISO-8601 timestamp: Voice request expires at this time. "
+                    "Only set when voice_requested=True and Voice was blocked."
+    )
+
+
+class WhyResponse(BaseModel):
+    transaction_id: str
+    timestamp: str
+    domain: Optional[str]
+    trace: dict
 
 
 # ---------------------------------------------------------------------------

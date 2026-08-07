@@ -26,12 +26,15 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import uuid
 import numpy as np
+from collections import OrderedDict
+from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
 from core.channels_schema import CORE_VERSION
-from core.governance import govern, govern_hybrid
+from core.governance import govern, govern_hybrid, govern_explain
 
 from instances.enmax.load_model import compute_load as enmax_load
 from instances.enmax.config import CHANNELS as ENMAX_CHANNELS
@@ -46,8 +49,26 @@ from agents.registry import load as load_registry
 from api.models import (
     GovernRequest, GovernResponse,
     ENMAXGovernRequest, CyclingGovernRequest, DomainGovernResponse,
-    ObserveRequest, ObserveResponse, AlertOut,
+    ObserveRequest, ObserveResponse, AlertOut, WhyResponse,
 )
+
+# ---------------------------------------------------------------------------
+# In-memory decision store for /why/{transaction_id}
+# Capped at _MAX_STORED entries — oldest evicted first.
+# ---------------------------------------------------------------------------
+_MAX_STORED = 1000
+_decision_store: OrderedDict[str, dict] = OrderedDict()
+
+
+def _store(transaction_id: str, domain: str | None, trace: dict) -> None:
+    if len(_decision_store) >= _MAX_STORED:
+        _decision_store.popitem(last=False)
+    _decision_store[transaction_id] = {
+        "transaction_id": transaction_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "domain": domain,
+        "trace": trace,
+    }
 
 app = FastAPI(
     title="Sensory Architecture Factory API",
@@ -97,6 +118,29 @@ def get_instance(domain: str):
     return instances[domain]
 
 
+@app.get("/why/{transaction_id}", response_model=WhyResponse)
+def why(transaction_id: str):
+    """
+    Return the full decision trace for a previous govern call.
+
+    Every /govern and /instances/{domain}/govern response includes a
+    transaction_id. Pass it here to see exactly why each channel was
+    admitted or blocked: budget at each step, reason per channel,
+    voice path taken.
+
+    Decisions are kept in memory (last 1000). For durable audit logs,
+    forward the trace to your SIEM or logging pipeline.
+    """
+    record = _decision_store.get(transaction_id)
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Transaction '{transaction_id}' not found. "
+                   "Decisions are kept in memory (last 1000 calls)."
+        )
+    return WhyResponse(**record)
+
+
 # ---------------------------------------------------------------------------
 # Generic govern endpoint
 # ---------------------------------------------------------------------------
@@ -107,24 +151,37 @@ def govern_generic(req: GovernRequest):
     Domain-agnostic single-sample governance.
     The caller supplies the attention budget and the channel list.
     The server runs the channel arbitration and returns which channels are open.
+
+    Set observe_only=true for shadow mode: same response, but shadow_mode=true
+    signals the client it should not actuate — used for pilot deployments that
+    measure cognitive savings without routing changes.
     """
-    channels = [
-        (c.name, c.priority, c.cost, c.note) for c in req.channels
-    ]
-    result = govern_hybrid(
+    channels = [(c.name, c.priority, c.cost, c.note) for c in req.channels]
+    result, trace = govern_explain(
         channels,
-        budget=req.budget,
-        reflex_active=req.reflex_active,
+        req.budget,
+        req.reflex_active,
         voice_requested=req.voice_requested,
         risk_present=req.risk_present,
     )
-    consumed = sum(cost for name, _, cost, _ in channels if name in result
-                   and name != "Touch")
+    txn_id = str(uuid.uuid4())
+    _store(txn_id, None, trace)
+
+    consumed = sum(cost for name, _, cost, _ in channels
+                   if name in result and name != "Touch")
+
+    shadow_blocked = []
+    if req.observe_only:
+        shadow_blocked = [ch for ch in result if ch not in ("Touch",)]
+
     return GovernResponse(
+        transaction_id=txn_id,
         active_channels=result,
         budget_consumed=round(consumed, 4),
         budget_remaining=round(max(0.0, req.budget - consumed), 4),
         reflex_fired=("Touch" in result and req.reflex_active),
+        shadow_mode=req.observe_only,
+        shadow_blocked=shadow_blocked if req.observe_only else [],
     )
 
 
@@ -158,23 +215,36 @@ def govern_enmax(req: ENMAXGovernRequest):
     attention = float(attention_arr[0])
 
     reflex_active = req.p1_active and ENMAX_HAS_REFLEX
-    result = govern_hybrid(
+    result, trace = govern_explain(
         ENMAX_CHANNELS,
-        budget=attention,
-        reflex_active=reflex_active,
+        attention,
+        reflex_active,
         voice_requested=req.voice_requested,
         risk_present=req.p1_active,
     )
+    txn_id = str(uuid.uuid4())
+    _store(txn_id, "enmax", trace)
+
+    voice_blocked = req.voice_requested and "Voice" not in result and "Voice:pulse" not in result
+    voice_retry_before = None
+    if voice_blocked:
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=req.voice_ttl_s)
+        voice_retry_before = expires_at.isoformat()
 
     note = ""
     if req.p1_active and "Touch" in result:
         note = "P1 active — Touch bypassed budget. Supervisor cannot interrupt via Voice."
     elif req.voice_requested and "Voice" in result:
         note = "Voice admitted — cognitive budget available for supervisor contact."
-    elif req.voice_requested and "Voice" not in result:
-        note = "Voice blocked — budget insufficient. Retry during a lower-load window."
+    elif voice_blocked:
+        note = f"Voice blocked — budget insufficient. Request expires at {voice_retry_before}."
+
+    shadow_blocked = []
+    if req.observe_only:
+        shadow_blocked = [ch for ch in result if ch != "Touch"]
 
     return DomainGovernResponse(
+        transaction_id=txn_id,
         domain="enmax",
         active_channels=result,
         budget=round(attention, 4),
@@ -184,6 +254,9 @@ def govern_enmax(req: ENMAXGovernRequest):
         reflex_fired=("Touch" in result and reflex_active),
         data_provenance=req.data_provenance,
         governance_note=note,
+        shadow_mode=req.observe_only,
+        shadow_blocked=shadow_blocked,
+        voice_retry_before=voice_retry_before,
     )
 
 
@@ -215,21 +288,35 @@ def govern_cycling(req: CyclingGovernRequest):
     load      = float(load_arr[0])
     attention = float(attention_arr[0])
 
-    result = govern_hybrid(
+    result, trace = govern_explain(
         CYCLING_CHANNELS,
-        budget=attention,
-        reflex_active=False,
+        attention,
+        False,
         voice_requested=req.voice_requested,
         risk_present=False,
     )
+    txn_id = str(uuid.uuid4())
+    _store(txn_id, "cycling", trace)
+
+    voice_blocked = req.voice_requested and "Voice" not in result
+    voice_retry_before = None
+    if voice_blocked:
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=req.voice_ttl_s)
+        voice_retry_before = expires_at.isoformat()
 
     note = ""
     if req.phase == "descent" and "Voice" in result:
         note = "Descent recovery window — Voice open for directeur sportif contact."
     elif req.phase == "climb" and "Voice" not in result:
-        note = "Climb load — Voice blocked. Budget consumed by Sound/Vision/Presence."
+        note = f"Climb load — Voice blocked. Request expires at {voice_retry_before}." \
+               if voice_blocked else "Climb load — Voice blocked."
+
+    shadow_blocked = []
+    if req.observe_only:
+        shadow_blocked = [ch for ch in result]
 
     return DomainGovernResponse(
+        transaction_id=txn_id,
         domain="cycling",
         active_channels=result,
         budget=round(attention, 4),
@@ -239,6 +326,9 @@ def govern_cycling(req: CyclingGovernRequest):
         reflex_fired=False,
         data_provenance=req.data_provenance,
         governance_note=note,
+        shadow_mode=req.observe_only,
+        shadow_blocked=shadow_blocked,
+        voice_retry_before=voice_retry_before,
     )
 
 

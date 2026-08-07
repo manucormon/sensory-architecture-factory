@@ -175,3 +175,99 @@ def govern_hybrid(channels, budget, reflex_active, *,
         queue.add(i)
 
     return active
+
+
+# --------------------------------------------------------------------
+# Explainability layer — govern_explain()
+#
+# Runs the same arbitration logic as govern_hybrid() but also returns
+# a structured trace capturing every channel decision and its reason.
+# Used by the /why/{transaction_id} API endpoint so auditors can see
+# exactly why each channel was admitted or blocked at any given sample.
+# --------------------------------------------------------------------
+
+def govern_explain(channels, budget, reflex_active, *,
+                   voice_requested=False, risk_present=False):
+    """
+    Same arbitration as govern_hybrid() (no queue, single sample).
+    Returns (active_channels, trace) where trace is a dict with:
+      - budget_in, reflex_active, voice_requested, risk_present
+      - channels: list of per-channel decisions with reason
+      - voice_path: "urgent_pulse" | "elective_admitted" |
+                    "elective_blocked" | "not_requested"
+      - active_channels, budget_remaining
+    """
+    trace = {
+        "budget_in": round(budget, 4),
+        "reflex_active": reflex_active,
+        "voice_requested": voice_requested,
+        "risk_present": risk_present,
+        "channels": [],
+        "voice_path": None,
+    }
+
+    voice = next((c for c in channels if c[0] == "Voice"), None)
+    non_voice = [c for c in channels if c[0] != "Voice"]
+
+    active = []
+    remaining = budget
+
+    for name, prio, cost, _ in sorted(non_voice, key=lambda c: c[1]):
+        if name == "Touch":
+            admitted = reflex_active
+            trace["channels"].append({
+                "name": name, "priority": prio, "cost": 0.0,
+                "admitted": admitted,
+                "reason": "reflex_active" if admitted else "reflex_inactive",
+                "budget_after": round(remaining, 4),
+            })
+            if admitted:
+                active.append(name)
+            continue
+        admitted = remaining >= cost
+        trace["channels"].append({
+            "name": name, "priority": prio, "cost": cost,
+            "admitted": admitted,
+            "reason": "budget_ok" if admitted else "budget_exhausted",
+            "budget_after": round(remaining - cost if admitted else remaining, 4),
+        })
+        if admitted:
+            active.append(name)
+            remaining -= cost
+
+    if voice is not None:
+        _, vprio, vcost, _ = voice
+        if voice_requested and risk_present:
+            active.append("Voice:pulse")
+            trace["channels"].append({
+                "name": "Voice", "priority": vprio, "cost": 0.0,
+                "admitted": True, "reason": "urgent_bypass_risk_present",
+                "budget_after": round(remaining, 4),
+            })
+            trace["voice_path"] = "urgent_pulse"
+        elif voice_requested and remaining >= vcost:
+            active.append("Voice")
+            trace["channels"].append({
+                "name": "Voice", "priority": vprio, "cost": vcost,
+                "admitted": True, "reason": "budget_ok",
+                "budget_after": round(remaining - vcost, 4),
+            })
+            trace["voice_path"] = "elective_admitted"
+        elif voice_requested:
+            trace["channels"].append({
+                "name": "Voice", "priority": vprio, "cost": vcost,
+                "admitted": False, "reason": "budget_exhausted",
+                "budget_after": round(remaining, 4),
+            })
+            trace["voice_path"] = "elective_blocked"
+        else:
+            trace["channels"].append({
+                "name": "Voice", "priority": vprio, "cost": vcost,
+                "admitted": False, "reason": "not_requested",
+                "budget_after": round(remaining, 4),
+            })
+            trace["voice_path"] = "not_requested"
+
+    trace["active_channels"] = active
+    trace["budget_remaining"] = round(remaining, 4)
+    return active, trace
