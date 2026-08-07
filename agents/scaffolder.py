@@ -27,7 +27,8 @@ TEMPLATE_DIR = ROOT / "TEMPLATE_arnes_base" / "domain_adapter"
 INSTANCES_DIR = ROOT / "instances"
 
 # Files copied verbatim from the template (domain name substituted in docstrings)
-TEMPLATE_FILES = ["data_loader.py", "load_model.py", "reflex_trigger.py", "config.py"]
+TEMPLATE_FILES = ["data_loader.py", "load_model.py", "reflex_trigger.py", "config.py",
+                  "perception.py"]
 
 
 def scaffold(domain: str, *, has_recovery_window: bool,
@@ -101,6 +102,9 @@ Every number feeding the governance decision in load_model.py must be labeled:
 
 See TEMPLATE_arnes_base/verification/checklist.md. In particular:
 - Tune CHANNELS costs in config.py for THIS domain (do not copy F1's numbers unchecked).
+- Implement perception.py: label every returned field MEASURED / TRACKED / PREDICTED.
+  A thin passthrough (return input unchanged) is fine if there is no spatial state.
+  Set HAS_PERCEPTION = True (real extraction) or False (passthrough/DECLARED).
 - Run the Voice-admission check: does a fresh Voice request open at this domain's
   most-open realistic moment? Know the answer before shipping.
 - Add tests/test_{domain}_instance.py and verify against a stored baseline.

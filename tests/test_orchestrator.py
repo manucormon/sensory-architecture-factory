@@ -164,8 +164,8 @@ def test_scaffolder_creates_expected_files():
         dest = scaffold(_TEST_DOMAIN,
                         has_recovery_window=True,
                         has_multi_timescale_load=False)
-        expected = ["data_loader.py", "load_model.py", "reflex_trigger.py",
-                    "config.py", "run.py", "NOTES.md"]
+        expected = ["data_loader.py", "perception.py", "load_model.py",
+                    "reflex_trigger.py", "config.py", "run.py", "NOTES.md"]
         for f in expected:
             assert (dest / f).exists(), f"missing: {f}"
         assert (dest / "data").is_dir()
@@ -193,6 +193,19 @@ def test_scaffolder_load_model_carries_declared_label():
                         has_multi_timescale_load=False)
         text = (dest / "load_model.py").read_text()
         assert "DECLARED" in text or "REAL" in text or "PROXY" in text
+    finally:
+        teardown(_TEST_DOMAIN)
+
+
+def test_scaffolder_perception_stub_is_unset():
+    """Scaffolded perception.py must have HAS_PERCEPTION=None (not yet declared)."""
+    try:
+        dest = scaffold(_TEST_DOMAIN,
+                        has_recovery_window=True,
+                        has_multi_timescale_load=False)
+        text = (dest / "perception.py").read_text()
+        assert "HAS_PERCEPTION = None" in text
+        assert "NotImplementedError" in text
     finally:
         teardown(_TEST_DOMAIN)
 
