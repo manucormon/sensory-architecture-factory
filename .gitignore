@@ -22,6 +22,11 @@ instances/*/data/*.csv
 instances/*/data/*.parquet
 instances/*/data/*.json
 
+# Exception: the cycling real-data file is committed — it is the cleaned
+# output of the GoldenCheetah OpenData pipeline (anonymised, open-access).
+# Source: https://osf.io/6hfpz/ (DOI 10.17605/OSF.IO/6HFPZ)
+!instances/cycling/data/gc_opendata_ride.csv
+
 # Derived output CSVs produced by run.py (ver_governed.csv etc.)
 # Baselines in tests/fixtures/ ARE committed — they are the contract.
 instances/*/*.csv

@@ -60,12 +60,14 @@ def test_tennis_perception_is_declared_passthrough():
     assert result is samples  # strict identity — nothing was copied or modified
 
 
-def test_cycling_perception_is_declared_passthrough():
-    """Cycling perception must expose HAS_PERCEPTION=False and return samples unchanged."""
+def test_cycling_perception_is_measured():
+    """Cycling now uses real GPS data — HAS_PERCEPTION=True (gradient is MEASURED)."""
     import instances.cycling.perception as cp
     import instances.cycling.data_loader as cd
 
-    assert cp.HAS_PERCEPTION is False
-    samples = cd.load()
-    result = cp.perceive(samples)
-    assert result is samples
+    assert cp.HAS_PERCEPTION is True
+    df = cd.load()
+    result = cp.perceive(df)
+    assert result is df
+    assert "gradient_pct" in result.columns
+    assert "phase" in result.columns

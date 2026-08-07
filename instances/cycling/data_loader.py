@@ -1,76 +1,42 @@
 """
 Cycling instance — data loading.
 
-DECLARED: all data is synthetic, generated to match realistic mountain-stage
-power profiles. No real athlete sensor is behind this. The structure is
-informed by published stage power data and training science literature, but
-every number is invented for illustration — same labeling discipline as the
-tennis instance.
+Source: GoldenCheetah Open Data Project (https://osf.io/6hfpz/, DOI 10.17605/OSF.IO/6HFPZ).
+Athlete: anonymised contributor, ride date 2019-12-28, mountain loop.
+License: open access for research use, no personally identifiable information.
 
-Models a 3600-sample (1 hour at 1 Hz) segment of a mountain stage with
-three phases, each repeated to fill the stage:
-  climb    — sustained high power, high gradient
-  descent  — low power, low cognitive demand, primary recovery window
-  flat     — moderate power, peloton dynamics, tactical decisions
+The raw file (gc_opendata_ride.csv) was cleaned as follows:
+  - Gradient computed from a 60-second central-difference window on GPS altitude
+    (per-sample 1s diff was too noisy; 60s window gives a stable signal).
+  - Gradient clipped to ±20% (physical ceiling for paved mountain roads).
+  - Phase derived from gradient: climb (>3%), descent (<-3%), flat (otherwise).
+  - All other fields (power_w, hr_bpm, alt_m) passed through unchanged.
+  - FTP = 240W — PROXY: 95% of the best 20-minute rolling mean power in this ride.
+    Industry standard estimation method. Not a lab test.
 
-Each sample is a dict with:
-  time_s         — elapsed seconds in the stage
-  phase          — 'climb' | 'descent' | 'flat'
-  power_w        — current power output (watts), DECLARED
-  ftp_w          — functional threshold power (watts), DECLARED constant
-  gradient_pct   — road gradient (%), DECLARED
-  crash_signal   — bool, simulated crash-ahead event (DECLARED)
+Labeling:
+  power_w       — REAL: recorded by a power meter on the rider's bike.
+  hr_bpm        — REAL: heart-rate monitor (not used by load_model.py today).
+  alt_m         — REAL: GPS barometric altitude (raw, 1Hz).
+  gradient_pct  — MEASURED: computed by perception.py from GPS altitude.
+  phase         — PROXY: threshold-derived from gradient_pct in perception.py.
+  ftp_w         — PROXY: 95% of best 20-min rolling power (not a lab test).
 """
 
-import math
+import os
+import pandas as pd
 
-FTP_W = 280           # DECLARED: typical pro cyclist FTP
-STAGE_DURATION_S = 3600
+FTP_W = 240   # PROXY — see module docstring
 
-# Phase definitions: (name, duration_s, base_power_pct_ftp, gradient_pct)
-# Power varies sinusoidally around the base to simulate effort variation.
-PHASE_PROFILE = [
-    ("climb",   900, 0.92, 7.5),
-    ("descent", 300, 0.35, -5.0),
-    ("flat",    600, 0.72, 1.0),
-    ("climb",   900, 0.95, 8.5),
-    ("descent", 300, 0.30, -6.0),
-    ("flat",    600, 0.68, 0.5),
-]
-_TOTAL_CYCLE = sum(d for _, d, _, _ in PHASE_PROFILE)
-
-# DECLARED: one simulated crash signal — a peloton incident at ~45 min
-_CRASH_SAMPLES = set(range(2700, 2703))
+_DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "gc_opendata_ride.csv")
 
 
-def _phase_at(t: int) -> tuple:
-    """Return (phase_name, power_pct_ftp, gradient_pct) for second t."""
-    pos = t % _TOTAL_CYCLE
-    cursor = 0
-    for name, duration, pwr_pct, grad in PHASE_PROFILE:
-        if pos < cursor + duration:
-            progress = (pos - cursor) / duration
-            variation = 0.05 * math.sin(2 * math.pi * progress * 3)
-            return name, pwr_pct + variation, grad
-        cursor += duration
-    return PHASE_PROFILE[-1][0], PHASE_PROFILE[-1][2], PHASE_PROFILE[-1][3]
-
-
-def load() -> list:
+def load() -> pd.DataFrame:
     """
-    Return a list of sample dicts for a synthetic mountain-stage hour.
-    All values are DECLARED — no real sensor behind this.
+    Return the cleaned ride as a DataFrame.
+
+    Columns: secs, km, power_w, hr_bpm, alt_m, gradient_pct, phase.
+    No ftp_w column — callers that need it should use the module constant FTP_W.
     """
-    samples = []
-    for t in range(STAGE_DURATION_S):
-        phase, pwr_pct, grad = _phase_at(t)
-        power_w = max(50, FTP_W * pwr_pct)
-        samples.append({
-            "time_s": t,
-            "phase": phase,
-            "power_w": round(power_w, 1),
-            "ftp_w": FTP_W,
-            "gradient_pct": grad,
-            "crash_signal": t in _CRASH_SAMPLES,
-        })
-    return samples
+    df = pd.read_csv(_DATA_PATH)
+    return df

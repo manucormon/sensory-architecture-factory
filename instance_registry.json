@@ -19,7 +19,7 @@
       "voice_opens_at_most_open_moment": false,
       "test_file": "tests/test_f1_instance.py",
       "baseline_csv": "tests/fixtures/ver_governed_baseline.csv",
-      "last_verified": "2026-08-06",
+      "last_verified": "2026-08-07",
       "notes": "Voice stays closed even at attention=0.93 (the open straight). Documented finding, not a bug \u2014 Sound+Vision+Presence consume the budget first by priority."
     },
     "tennis": {
@@ -44,11 +44,12 @@
     },
     "cycling": {
       "status": "verified",
-      "governed_subject": null,
-      "data_provenance": "DECLARED \u2014 synthetic mountain-stage power profiles, no real sensor",
+      "governed_subject": "Anonymised cyclist, mountain loop, 2019-12-28",
+      "data_provenance": "REAL/PROXY/MEASURED \u2014 power_w=REAL (power meter), gradient_pct=MEASURED (GPS altitude 60s window), phase=PROXY (gradient threshold), FTP=PROXY (95% best 20-min rolling)",
       "has_recovery_window": true,
       "has_multi_timescale_load": true,
-      "has_reflex": true,
+      "has_reflex": false,
+      "has_perception": true,
       "channel_costs": {
         "Touch": 0.0,
         "Sound": 0.1,
@@ -59,8 +60,8 @@
       "voice_opens_at_most_open_moment": true,
       "test_file": "tests/test_cycling_instance.py",
       "baseline_csv": null,
-      "last_verified": "2026-08-06",
-      "notes": "Two-timescale load: instant power + accumulated fatigue. Voice opens on descent (attention=0.74) \u2014 opposite finding from F1. Tuning history documented in config.py."
+      "last_verified": "2026-08-07",
+      "notes": "Upgraded from DECLARED synthetic to real GoldenCheetah OpenData (OSF 10.17605/OSF.IO/6HFPZ). 79 min, 339m elevation, FTP=240W. HAS_REFLEX=False \u2014 no crash labels in real data. Voice opens on descent (coasting, power~0) \u2014 real-data confirmation of the key finding. Two-timescale divergence verified against actual power-meter trace."
     }
   }
 }

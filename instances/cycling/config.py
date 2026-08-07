@@ -1,34 +1,28 @@
 """
 Cycling instance — tuned channel config.
 
+Data provenance (v2 — real data):
+  Source: GoldenCheetah OpenData, ride 2019-12-28, mountain loop.
+  power_w = REAL (power meter). FTP = 240W = PROXY (95% best 20-min rolling).
+  gradient_pct = MEASURED (GPS altitude, 60s window). phase = PROXY (gradient threshold).
+  HAS_REFLEX = False: no crash label exists in real ride data.
+
 TUNING HISTORY (required transparency per CONTRACT.md):
 
-First attempt: Sound=0.15, Vision=0.25, Presence=0.15, Voice=0.25.
-Test result: Voice stayed CLOSED at the best descent (attention=0.74).
-  Sound+Vision+Presence = 0.55 consumed; remaining = 0.19 < Voice(0.25).
-  Same symptom as F1, which was the wrong finding for this domain.
+DECLARED prototype (v1):
+  First attempt: Sound=0.15, Vision=0.25, Presence=0.15, Voice=0.25.
+  Test result: Voice stayed CLOSED at the best descent (attention=0.74).
+    Sound+Vision+Presence = 0.55; remaining = 0.19 < Voice(0.25). Wrong.
 
-Root cause: the first attempt imported too much of F1's cost intuition.
-In cycling, all non-Voice channels are lighter than in F1:
-  - Sound: ambient race noise and radio static — always present, near-
-    subliminal. Lighter than F1's directional earcon (no sudden "rival
-    entering your zone" moment; the peloton is a known constant).
-  - Vision: road ahead and competitors — important, but the time horizon
-    is longer than F1's split-second gap check. Glanceable, not urgent.
-  - Presence: heart-rate/power zone on a head unit — truly ambient,
-    requires no decision. Lighter than F1.
-  - Voice: the directeur sportif model is constant contact, not a rare
-    deliberate act. Exchanges are short ("attack now", "sit in", "eat").
+  Root cause: imported too much of F1's cost intuition.
+  Revised costs: Sound=0.10, Vision=0.20, Presence=0.10, Voice=0.20.
+  Verification at best descent (attention=0.74):
+    Sound+Vision+Presence = 0.40; remaining = 0.34 >= Voice(0.20) → OPENS ✓
 
-Revised costs: Sound=0.10, Vision=0.20, Presence=0.10, Voice=0.20.
-Verification at best descent (attention=0.74):
-  Sound(0.10) + Vision(0.20) + Presence(0.10) = 0.40 spent.
-  Remaining = 0.34 >= Voice(0.20) → Voice OPENS. ✓
-  Confirmed by test_voice_opens_on_descent_with_fresh_request.
-
-At climb peak (attention ~0.26):
-  Remaining after non-Voice = 0.26 - 0.40 → budget exhausted before Voice.
-  Voice stays closed at peak load — also correct behavior.
+Real data (v2) — costs UNCHANGED, re-verified against real ride:
+  Descent power mean = 19W (mostly coasting) → attention is very high on descents.
+  Voice-opens-on-descent re-confirmed with real attention values.
+  Climb power mean = 260W (108% FTP) → budget exhausted on all climbs ✓
 """
 
 from core.channels_schema import CORE_VERSION

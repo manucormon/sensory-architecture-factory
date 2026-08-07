@@ -1,32 +1,47 @@
 """
 Cycling instance — perception layer.
 
-Thin passthrough. The synthetic data generator in data_loader.py produces
-phase, power_w, gradient_pct, and crash_signal directly. These are all
-load_model.py and reflex_trigger.py need, and all are DECLARED — no real
-sensor, no real peloton, no real road.
+HAS_PERCEPTION = True. This instance performs real perceptual extraction:
+gradient and phase are computed from raw GPS altitude data by data_loader.py's
+cleaning pipeline. The resulting fields are attached to every row.
 
-No MEASURED, TRACKED, or PREDICTED fields exist in this instance:
-  - There is no external positioning system (no GPS stream, no race
-    transponder delivering gap-to-rivals pre-computed).
-  - There is no tracking algorithm — rival positions, peloton density,
-    and crash detection are all DECLARED synthetic flags.
-  - There is no trajectory prediction.
+Why True here but False for tennis/synthetic cycling:
+  - The source is a real power-meter ride with GPS altitude (REAL).
+  - gradient_pct is derived from that signal via a 60s central-difference
+    window — it is a MEASURED quantity: computed here from raw sensor input.
+  - phase is PROXY: a label derived from gradient_pct via fixed thresholds.
+    The thresholds are a design choice, not a measurement.
 
-A real cycling instance with live race data could expose:
-  - gap_to_rival_m: MEASURED (race transponder system, like FIA timing)
-  - peloton_density: MEASURED (from race broadcast tracking, if available)
-  - rival_attack_predicted: PREDICTED (from a power-spike tracker)
-That would require a real data source and, for PREDICTED, a real model.
-Neither exists here.
+Fields exposed:
+  gradient_pct  MEASURED — computed from GPS altitude in data_loader cleaning
+  phase         PROXY    — threshold-derived from gradient_pct (>3%=climb, <-3%=descent)
+
+These fields are already present in the DataFrame returned by data_loader.load().
+perceive() validates that they exist and returns the DataFrame unchanged — the
+perceptual work happened at cleaning time, not at runtime. This is correct:
+the FIA timing system pre-computed DistanceToDriverAhead for F1; the cleaning
+pipeline pre-computed gradient_pct and phase here.
 """
 
-HAS_PERCEPTION = False  # no spatial extraction needed — passthrough
+import pandas as pd
+
+HAS_PERCEPTION = True   # gradient_pct = MEASURED, phase = PROXY
 
 
-def perceive(samples: list) -> list:
+def perceive(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Return samples unchanged. All fields needed by load_model.py and
-    reflex_trigger.py are already present in the DECLARED synthetic data.
+    Validate and pass through the ride DataFrame.
+
+    The perceptual fields (gradient_pct, phase) were computed during data
+    cleaning; this function asserts they are present and well-formed.
+    Returns the same DataFrame — no new columns added.
     """
-    return samples
+    assert "gradient_pct" in df.columns, \
+        "gradient_pct missing — was the ride pre-processed by the cleaning pipeline?"
+    assert "phase" in df.columns, \
+        "phase missing — was the ride pre-processed by the cleaning pipeline?"
+    assert set(df["phase"].unique()).issubset({"climb", "descent", "flat"}), \
+        f"unexpected phase values: {df['phase'].unique()}"
+    assert df["gradient_pct"].between(-20, 20).all(), \
+        "gradient_pct out of ±20% bounds — check cleaning pipeline clip"
+    return df

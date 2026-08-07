@@ -1,14 +1,16 @@
 """
 Cycling instance — orchestration.
 
-Wires data_loader + load_model + reflex_trigger + config into core.governance.
-Reports two moments (unlike F1's corner/straight dichotomy):
-  CLIMB PEAK   — highest combined load in the stage (both timescales maxed)
+Data source: GoldenCheetah Open Data Project, ride 2019-12-28.
+power_w = REAL | gradient_pct = MEASURED | phase = PROXY | FTP = PROXY
+HAS_REFLEX = False (no crash labels in real ride data).
+
+Reports two moments:
+  CLIMB PEAK   — highest combined load (both timescales maxed)
   DESCENT      — most-open moment, primary recovery window for Voice
 
-Also reports how the two timescales diverge: same instantaneous power at
-different stage times can produce very different combined load — that
-divergence is the whole point of this instance.
+Also demonstrates two-timescale divergence with real data: same instantaneous
+power at different stage times produces different combined load.
 """
 
 import os
@@ -18,77 +20,76 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 import numpy as np
 
-from core.governance import govern_series, govern_hybrid, VoiceQueue
-from instances.cycling.data_loader import load, STAGE_DURATION_S
+from core.governance import govern_series
+from instances.cycling.data_loader import load, FTP_W
+from instances.cycling.perception import perceive
 from instances.cycling.load_model import compute_load
-from instances.cycling.reflex_trigger import reflex_series
 from instances.cycling.config import CHANNELS, SAMPLE_RATE_HZ
 
-samples = load()
-instant_load, fatigue, load_arr, attention = compute_load(samples)
-reflex_flags = reflex_series(samples)
+df_raw = load()
+df = perceive(df_raw)
 
+instant_load, fatigue, load_arr, attention = compute_load(df, FTP_W)
+phases = df["phase"].tolist()
+
+reflex_flags = np.zeros(len(df), dtype=bool)   # HAS_REFLEX = False
 active_sets = govern_series(CHANNELS, attention, reflex_flags)
 
-# Annotate samples with governance decisions
-for i, s in enumerate(samples):
-    s["instant_load"] = instant_load[i]
-    s["fatigue"] = fatigue[i]
-    s["load"] = load_arr[i]
-    s["attention"] = attention[i]
-    for name, *_ in CHANNELS:
-        s[name] = name in active_sets[i]
-
 # --- Key moments ---
-phases = [s["phase"] for s in samples]
 climb_i = int(np.argmax(load_arr))
 descent_mask = np.array([p == "descent" for p in phases])
-descent_i = int(np.argmax(attention * descent_mask)) if descent_mask.any() else int(np.argmax(attention))
+descent_i = int(np.argmax(attention * descent_mask)) if descent_mask.any() \
+    else int(np.argmax(attention))
 
-# --- Two-timescale divergence demonstration ---
-# Find two samples with similar instantaneous load but different fatigue
-target_instant = instant_load[climb_i]
-similar_instant = np.abs(instant_load - target_instant) < 0.05
-early_i = int(np.argmax(similar_instant))  # first occurrence
-late_i = len(samples) - 1 - int(np.argmax(similar_instant[::-1]))  # last occurrence
+# Two-timescale divergence: find early and late samples with similar instant load
+target_instant = float(instant_load[climb_i])
+similar = np.abs(instant_load - target_instant) < 0.05
+early_i = int(np.argmax(similar))
+late_i = len(df) - 1 - int(np.argmax(similar[::-1]))
 
 
 def describe(i, label):
-    s = samples[i]
-    chans = [n for n, *_ in CHANNELS if s[n]]
-    print(f"\n  {label}  (t={s['time_s']}s, phase='{s['phase']}')")
-    print(f"    power {s['power_w']:.0f}W  ({s['power_w']/s['ftp_w']*100:.0f}% FTP) | "
-          f"gradient {s['gradient_pct']:+.1f}%")
-    print(f"    instant load {s['instant_load']:.2f} | "
-          f"fatigue {s['fatigue']:.2f} | "
-          f"combined load {s['load']:.2f} → attention {s['attention']:.2f}")
+    chans = [n for n, *_ in CHANNELS if n in active_sets[i]]
+    print(f"\n  {label}  (t={int(df['secs'].iloc[i])}s, phase='{df['phase'].iloc[i]}')")
+    print(f"    power {df['power_w'].iloc[i]:.0f}W  ({df['power_w'].iloc[i]/FTP_W*100:.0f}% FTP) | "
+          f"gradient {df['gradient_pct'].iloc[i]:+.1f}%")
+    print(f"    instant load {instant_load[i]:.2f} | "
+          f"fatigue {fatigue[i]:.2f} | "
+          f"combined load {load_arr[i]:.2f} → attention {attention[i]:.2f}")
     print(f"    channels speaking: {', '.join(chans) if chans else 'SILENCE'}")
 
 
 if __name__ == "__main__":
     print("=" * 64)
-    print("ATTENTION-GOVERNANCE ENGINE — cycling (mountain stage, declared)")
+    print("ATTENTION-GOVERNANCE ENGINE — cycling (real ride, GC OpenData)")
     print("=" * 64)
-    print(f"samples: {len(samples)} | duration: {STAGE_DURATION_S}s "
-          f"| sample rate: {SAMPLE_RATE_HZ} Hz")
+    print(f"samples: {len(df)} | duration: {int(df['secs'].max()/60)} min "
+          f"| rate: {SAMPLE_RATE_HZ} Hz | FTP: {FTP_W}W (PROXY)")
     print(f"load range: {load_arr.min():.2f}–{load_arr.max():.2f}")
-    print(f"\nchannel airtime over the stage (share of samples speaking):")
+
+    phase_dist = {p: phases.count(p) for p in ['climb', 'descent', 'flat']}
+    print(f"phase distribution: " +
+          " | ".join(f"{p}={n}s ({n/len(df)*100:.0f}%)" for p, n in phase_dist.items()))
+
+    print(f"\nchannel airtime over the ride (share of samples speaking):")
     for name, *_ in CHANNELS:
-        airtime = sum(s[name] for s in samples) / len(samples)
+        airtime = sum(1 for s in active_sets if name in s) / len(df)
         print(f"    {name:9s} {airtime*100:5.1f}%")
 
     describe(climb_i, "CLIMB PEAK   (both timescales maxed)")
     describe(descent_i, "DESCENT      (primary recovery window — Voice opens here)")
 
     print(f"\n  TWO-TIMESCALE DIVERGENCE — same instant load, different fatigue:")
-    describe(early_i, f"EARLY STAGE  (instant~{instant_load[early_i]:.2f}, fatigue low)")
-    describe(late_i,  f"LATE STAGE   (instant~{instant_load[late_i]:.2f}, fatigue high)")
+    describe(early_i, f"EARLY RIDE   (instant~{instant_load[early_i]:.2f}, fatigue low)")
+    describe(late_i,  f"LATE RIDE    (instant~{instant_load[late_i]:.2f}, fatigue high)")
 
     out_path = os.path.join(os.path.dirname(__file__), "cycling_governed.csv")
-    import csv
-    keys = list(samples[0].keys())
-    with open(out_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=keys)
-        w.writeheader()
-        w.writerows(samples)
+    df_out = df.copy()
+    df_out["instant_load"] = instant_load
+    df_out["fatigue"] = fatigue
+    df_out["load"] = load_arr
+    df_out["attention"] = attention
+    for name, *_ in CHANNELS:
+        df_out[name] = [name in s for s in active_sets]
+    df_out.to_csv(out_path, index=False)
     print(f"\nsaved per-sample decisions → {out_path}")
