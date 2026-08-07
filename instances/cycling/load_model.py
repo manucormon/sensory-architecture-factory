@@ -46,7 +46,12 @@ def compute_load(df: pd.DataFrame, ftp_w: float) -> tuple:
     # --- Timescale 1: instantaneous ---
     # PROXY: intensity factor (IF = power / FTP) as cognitive demand proxy.
     intensity_factor = np.clip(power / ftp_w, 0, 1.2) / 1.2
-    instant_load = np.convolve(intensity_factor, np.ones(5) / 5, mode="same")
+    # Skip smoothing for single-sample calls (API real-time use): convolving
+    # a 1-element array divides by 5, producing unrealistically low loads.
+    if len(intensity_factor) > 1:
+        instant_load = np.convolve(intensity_factor, np.ones(5) / 5, mode="same")
+    else:
+        instant_load = intensity_factor.copy()
     instant_load = np.clip(instant_load, 0, 1)
 
     # --- Timescale 2: accumulated fatigue ---

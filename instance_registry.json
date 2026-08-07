@@ -62,6 +62,27 @@
       "baseline_csv": null,
       "last_verified": "2026-08-07",
       "notes": "Upgraded from DECLARED synthetic to real GoldenCheetah OpenData (OSF 10.17605/OSF.IO/6HFPZ). 79 min, 339m elevation, FTP=240W. HAS_REFLEX=False \u2014 no crash labels in real data. Voice opens on descent (coasting, power~0) \u2014 real-data confirmation of the key finding. Two-timescale divergence verified against actual power-meter trace."
+    },
+    "enmax": {
+      "status": "scaffolded",
+      "governed_subject": "ENMAX Energy dispatcher, Calgary \u2014 12-hour shift",
+      "data_provenance": "DECLARED \u2014 synthetic shift with storm event and two P1 windows (gas leak h3, transformer fire h4.2). No real CAD data.",
+      "has_recovery_window": true,
+      "has_multi_timescale_load": true,
+      "has_reflex": true,
+      "has_perception": false,
+      "channel_costs": {
+        "Touch": 0.0,
+        "Sound": 0.1,
+        "Vision": 0.3,
+        "Presence": 0.1,
+        "Voice": 0.2
+      },
+      "voice_opens_at_most_open_moment": true,
+      "test_file": "tests/test_enmax_instance.py",
+      "baseline_csv": null,
+      "last_verified": "2026-08-07",
+      "notes": "First professional domain instance. P1 life-safety events bypass budget via Touch reflex. Voice opens in post-storm lull (attention=0.79) \u2014 the primary supervisor coaching window. Observer agent wired: fires SUSTAINED_HIGH_LOAD during storm, RECOVERY_DETECTED after. Data upgrade path: connect to real ENMAX CAD system via data_loader.py \u2014 labels upgrade to REAL/PROXY on integration."
     }
   }
 }
