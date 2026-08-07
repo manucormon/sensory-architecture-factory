@@ -1,12 +1,11 @@
 """
-Cycling instance — data loading.
+ENMAX instance — data loading.
 
 DECLARED: all data is synthetic, generated to match a realistic ENMAX
 dispatcher shift profile. No real CAD (Computer-Aided Dispatch) system
-behind this. The structure is informed by:
-  - Public ENMAX incident response documentation
-  - Calgary major outage patterns (storm season June-September)
-  - Emergency dispatch cognitive load literature (Loveday et al., 2018)
+behind this. The shift structure (volume peaks, storm events, P1 windows)
+is illustrative — informed by general knowledge of utility dispatch
+operations, not by any specific literature citation.
 
 Simulates one 12-hour shift (43200 samples at 1Hz) with:
 
