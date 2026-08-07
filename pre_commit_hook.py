@@ -1,7 +1,7 @@
 """
 pre_commit_hook.py — Security and integrity gate.
 
-Runs three checks before any commit is allowed through:
+Runs four checks before any commit is allowed through:
 
   1. SECRET SCAN     — blocks patterns that look like credentials or API keys.
   2. LABELING CHECK  — every load_model.py must contain at least one
@@ -9,6 +9,14 @@ Runs three checks before any commit is allowed through:
                        in code, not just prose).
   3. KNOWLEDGE GUARD — every .md file in knowledge/ must carry a
                        classification header (PUBLIC / CONFIDENTIAL / NDA).
+  4. CLAIM GUARD     — any .md or .html file that contains a specific
+                       percentage ("42%") or a citation pattern
+                       ("(Author, 2018)" / "(Author et al., 2018)") must
+                       have a VERIFIED comment within 3 lines of that claim.
+                       Format: <!-- VERIFIED: source description -->
+                       This catches fabricated statistics before they reach
+                       a client-facing document. The code has pytest; the
+                       prose now has this gate.
 
 Run directly:
     python3 pre_commit_hook.py [--staged-only]
@@ -153,6 +161,67 @@ def check_labeling(files):
 
 
 # ---------------------------------------------------------------------------
+# Check 4 — Claim guard: specific percentages and citations in prose files
+# ---------------------------------------------------------------------------
+
+# Matches: "42%", "80%", "0.3%", etc.
+_PERCENT_PATTERN = re.compile(r'\b\d+(?:\.\d+)?%')
+
+# Matches: "(Smith, 2018)", "(Smith et al., 2018)", "(Smith & Jones, 2018)"
+_CITATION_PATTERN = re.compile(
+    r'\([A-Z][a-zA-Záéíóúñ]+(?:\s+(?:et al\.?|&\s*[A-Z][a-z]+))?,\s*\d{4}\)'
+)
+
+# Verification marker — must appear within ±3 lines of the flagged claim.
+# Format: <!-- VERIFIED: source description -->
+_VERIFIED_MARKER = re.compile(r'<!--\s*VERIFIED\s*:', re.IGNORECASE)
+
+_PROSE_EXTENSIONS = {".md", ".html", ".txt"}
+
+# Paths to skip — fixtures, templates that carry placeholder text, etc.
+_CLAIM_SKIP_PATTERNS = [
+    "TEMPLATE_",
+    "fixtures/",
+    ".git/",
+    "NOTES.md",     # instance notes carry repo-internal references, not external claims
+]
+
+
+def _nearby_verified(lines, line_idx, window=3):
+    """Return True if a VERIFIED marker exists within `window` lines of line_idx."""
+    lo = max(0, line_idx - window)
+    hi = min(len(lines), line_idx + window + 1)
+    return any(_VERIFIED_MARKER.search(lines[i]) for i in range(lo, hi))
+
+
+def check_claims(files):
+    """
+    Scan prose files for unverified specific percentages and citation patterns.
+    Each flagged match must have a <!-- VERIFIED: ... --> comment within 3 lines.
+    Returns list of (rel_path, line_no, match_text, kind).
+    """
+    findings = []
+    for path in files:
+        if path.suffix not in _PROSE_EXTENSIONS:
+            continue
+        rel = str(_rel(path))
+        if any(skip in rel for skip in _CLAIM_SKIP_PATTERNS):
+            continue
+        text = _read_safe(path)
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            if "<!-- VERIFIED" in line:
+                continue  # the marker line itself — skip
+            for m in _PERCENT_PATTERN.finditer(line):
+                if not _nearby_verified(lines, i):
+                    findings.append((_rel(path), i + 1, m.group(), "percentage"))
+            for m in _CITATION_PATTERN.finditer(line):
+                if not _nearby_verified(lines, i):
+                    findings.append((_rel(path), i + 1, m.group(), "citation"))
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # Check 3 — knowledge/ classification headers
 # ---------------------------------------------------------------------------
 
@@ -231,6 +300,20 @@ def run(staged_only=False):
             print(f"[OK] CHECK 3 — classification headers present in {len(knowledge_checked)} knowledge file(s)")
         else:
             print("[OK] CHECK 3 — no knowledge/ .md files to check")
+
+    # --- 4. Claim guard ---
+    unverified_claims = check_claims(files)
+    if unverified_claims:
+        failed = True
+        print("\n[BLOCKED] CHECK 4 — unverified statistics or citations in prose files:")
+        print("  Each specific percentage or (Author, Year) citation must have a")
+        print("  <!-- VERIFIED: source description --> comment within 3 lines.")
+        print("  If no real source exists, rephrase as a qualitative claim instead.")
+        for path, line_no, match, kind in unverified_claims:
+            print(f"  {path}:{line_no}  [{kind}]  {match!r}")
+    else:
+        prose_checked = [f for f in files if f.suffix in _PROSE_EXTENSIONS]
+        print(f"[OK] CHECK 4 — claim guard passed ({len(prose_checked)} prose file(s) scanned)")
 
     if failed:
         print("\n[pre-commit] GATE CLOSED — fix the issues above before committing.")
