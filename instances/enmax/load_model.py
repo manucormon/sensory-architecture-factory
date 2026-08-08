@@ -83,9 +83,14 @@ def compute_load(samples: list) -> tuple:
                 0.50 * norm_inc + 0.35 * norm_q + 0.15 * crew_pres, 0, 1
             )
 
-    # Smooth instant load over 30s to remove sample-level noise
-    instant_load = np.convolve(instant_raw, np.ones(30) / 30, mode="same")
-    instant_load = np.clip(instant_load, 0, 1)
+    # Smooth instant load with a causal rolling mean — window capped at actual
+    # length so single-sample or short inputs are not diluted by zero-padding.
+    # mode="full" + trim avoids the artificial padding that mode="same" introduces
+    # for inputs shorter than the kernel (verified bug: P1 single-sample gave 0.033).
+    window = min(30, n)
+    kernel = np.ones(window) / window
+    convolved = np.convolve(instant_raw, kernel, mode="full")[:n]
+    instant_load = np.clip(convolved, 0, 1)
 
     # Combined: noisy-OR
     load = 1 - (1 - _W_INSTANT * instant_load) * (1 - _W_FATIGUE * fatigue)

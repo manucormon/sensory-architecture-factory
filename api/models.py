@@ -8,8 +8,9 @@ reminded they need to declare it — the discipline travels through the wire.
 """
 
 from __future__ import annotations
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from typing import List, Literal, Optional
+from pydantic import BaseModel, Field, field_validator
+import math
 
 
 # ---------------------------------------------------------------------------
@@ -17,10 +18,17 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class ChannelSpec(BaseModel):
-    name: str
-    priority: int
-    cost: float
-    note: str = ""
+    name: str = Field(..., min_length=1, max_length=64)
+    priority: int = Field(..., ge=0, le=100)
+    cost: float = Field(..., ge=0.0, le=1.0)
+    note: str = Field("", max_length=256)
+
+    @field_validator("cost")
+    @classmethod
+    def cost_must_be_finite(cls, v: float) -> float:
+        if not math.isfinite(v):
+            raise ValueError("cost must be a finite number")
+        return v
 
 
 class GovernRequest(BaseModel):
@@ -82,7 +90,7 @@ class ENMAXGovernRequest(BaseModel):
         False,
         description="Shadow mode: engine runs but client should not actuate."
     )
-    data_provenance:  str = Field(
+    data_provenance: Literal["REAL", "PROXY", "DECLARED"] = Field(
         "DECLARED",
         description="REAL | PROXY | DECLARED — label for the metrics in this request"
     )
@@ -96,7 +104,7 @@ class CyclingGovernRequest(BaseModel):
     ftp_w:           float = Field(..., gt=0.0, description="Athlete FTP (W)")
     gradient_pct:    float = Field(..., ge=-20.0, le=20.0,
                                    description="Road gradient %, MEASURED from GPS")
-    phase:           str   = Field(..., description="climb | descent | flat")
+    phase:           Literal["climb", "descent", "flat"] = Field(..., description="climb | descent | flat")
     shift_elapsed_s: float = Field(..., ge=0.0,
                                    description="Seconds elapsed in the ride")
     voice_requested: bool = False
@@ -108,7 +116,7 @@ class CyclingGovernRequest(BaseModel):
         False,
         description="Shadow mode: engine runs but client should not actuate."
     )
-    data_provenance: str = Field(
+    data_provenance: Literal["REAL", "PROXY", "DECLARED"] = Field(
         "REAL",
         description="REAL | PROXY | DECLARED — label for the metrics in this request"
     )
