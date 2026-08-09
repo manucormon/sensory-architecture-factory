@@ -77,7 +77,7 @@ app = FastAPI(
         "decides which sensory channels (Touch/Sound/Vision/Presence/Voice) "
         "may reach them. Domain-agnostic core, domain-specific instances."
     ),
-    version="1.0.0",
+    version="1.1.0",
 )
 
 
@@ -252,11 +252,13 @@ def govern_enmax(req: ENMAXGovernRequest):
         instant_load=round(instant, 4),
         fatigue=round(fatigue, 4),
         reflex_fired=("Touch" in result and reflex_active),
+        load_mode="two_timescale",  # ENMAX load model always computes fatigue internally
         data_provenance=req.data_provenance,
         governance_note=note,
         shadow_mode=req.observe_only,
         shadow_blocked=shadow_blocked,
         voice_request_expires_at=voice_request_expires_at,
+        voice_retry_before=voice_request_expires_at,  # deprecated alias — same value
     )
 
 
@@ -285,14 +287,18 @@ def govern_cycling(req: CyclingGovernRequest):
     instant_arr, _ignored_fatigue, load_arr, attention_arr = cycling_load(df, req.ftp_w)
     instant = float(instant_arr[0])
 
-    # This endpoint has no ride history. The client MUST supply accumulated fatigue
-    # (DECLARED). Recomputing fatigue from current power × elapsed time would
-    # assume constant effort throughout — an invalid fabrication of history.
-    fatigue = req.fatigue  # DECLARED — client's responsibility to compute and pass
-
-    _W_FATIGUE = 0.55
-    _W_INSTANT = 0.70
-    load      = float(min(1 - (1 - _W_INSTANT * instant) * (1 - _W_FATIGUE * fatigue), 1.0))
+    # fatigue=None means the client has no ride history (instant_only mode).
+    # Silently converting None → 0.0 would fabricate a "rested" state;
+    # the model would silently under-estimate cognitive load.
+    fatigue = req.fatigue  # Optional[float] — None when unknown
+    if fatigue is not None:
+        _W_FATIGUE = 0.55
+        _W_INSTANT = 0.70
+        load = float(min(1 - (1 - _W_INSTANT * instant) * (1 - _W_FATIGUE * fatigue), 1.0))
+        load_mode = "two_timescale"
+    else:
+        load = float(instant)   # instant_only — no fatigue contribution
+        load_mode = "instant_only"
     attention = 1.0 - load
 
     result, trace = govern_explain(
@@ -329,13 +335,15 @@ def govern_cycling(req: CyclingGovernRequest):
         budget=round(attention, 4),
         load=round(load, 4),
         instant_load=round(instant, 4),
-        fatigue=round(fatigue, 4),
+        fatigue=round(fatigue, 4) if fatigue is not None else None,
         reflex_fired=False,
+        load_mode=load_mode,
         data_provenance=req.data_provenance,
         governance_note=note,
         shadow_mode=req.observe_only,
         shadow_blocked=shadow_blocked,
         voice_request_expires_at=voice_request_expires_at,
+        voice_retry_before=voice_request_expires_at,  # deprecated alias — same value
     )
 
 

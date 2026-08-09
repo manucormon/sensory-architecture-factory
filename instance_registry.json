@@ -18,8 +18,8 @@
       },
       "voice_opens_at_most_open_moment": false,
       "test_file": "tests/test_f1_instance.py",
-      "baseline_csv": "tests/fixtures/ver_governed_baseline.csv",
-      "last_verified": "2026-08-07",
+      "baseline_csv": null,
+      "last_verified": "2026-08-09",
       "notes": "Voice stays closed even at attention=0.93 (the open straight). Documented finding, not a bug \u2014 Sound+Vision+Presence consume the budget first by priority."
     },
     "tennis": {

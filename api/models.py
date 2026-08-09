@@ -9,7 +9,7 @@ reminded they need to declare it — the discipline travels through the wire.
 
 from __future__ import annotations
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import math
 
 
@@ -99,6 +99,16 @@ class ENMAXGovernRequest(BaseModel):
 class CyclingGovernRequest(BaseModel):
     """
     Cycling instance metrics — power-meter data for a single sample.
+
+    API 1.1 changes (backwards-compatible):
+      - fatigue: Optional[float] = None — None means unknown; server uses instant_only mode.
+        Absence MUST NOT be silently converted to 0.0 (that would fabricate history).
+        If you have ride history, supply fatigue + fatigue_provenance.
+      - fatigue_provenance: required when fatigue is not None.
+      - load_mode: "instant_only" (default) | "two_timescale". Reflects what the server did.
+        Consumers that require two_timescale must return 422 when fatigue is None.
+      - voice_retry_before: deprecated alias for voice_request_expires_at (API 1.x compat).
+        Both carry the same value. Removed in API 2.0.
     """
     power_w:         float = Field(..., ge=0.0, description="Current power output (W)")
     ftp_w:           float = Field(..., gt=0.0, description="Athlete FTP (W)")
@@ -108,11 +118,17 @@ class CyclingGovernRequest(BaseModel):
     shift_elapsed_s: float = Field(..., ge=0.0,
                                    description="Seconds elapsed in the ride (informational; "
                                                "used for audit trail, not fatigue computation)")
-    fatigue: float = Field(
-        0.0, ge=0.0, le=1.0,
+    fatigue: Optional[float] = Field(
+        None, ge=0.0, le=1.0,
         description="Accumulated fatigue [0..1], DECLARED by the client. "
+                    "None = unknown / start of session. "
                     "The server has no ride history — the client must compute and supply this. "
-                    "0.0 means 'not provided / start of session'."
+                    "MUST NOT be defaulted to 0.0 by the server (fabricated history). "
+                    "When None, server uses instant_only load model."
+    )
+    fatigue_provenance: Optional[Literal["REAL", "PROXY", "DECLARED"]] = Field(
+        None,
+        description="Required when fatigue is not None. Declares how fatigue was derived."
     )
     voice_requested: bool = False
     voice_ttl_s:     float = Field(
@@ -128,6 +144,18 @@ class CyclingGovernRequest(BaseModel):
         description="REAL | PROXY | DECLARED — label for the metrics in this request"
     )
 
+    @model_validator(mode="after")
+    def check_fatigue_provenance_consistency(self):
+        fatigue_present = self.fatigue is not None
+        provenance_present = self.fatigue_provenance is not None
+        if fatigue_present and not provenance_present:
+            raise ValueError("fatigue_provenance is required when fatigue is provided")
+        if not fatigue_present and provenance_present:
+            raise ValueError(
+                "fatigue_provenance must not be provided when fatigue is absent"
+            )
+        return self
+
 
 class DomainGovernResponse(BaseModel):
     transaction_id: str
@@ -136,18 +164,28 @@ class DomainGovernResponse(BaseModel):
     budget: float
     load: float
     instant_load: float
-    fatigue: float
+    fatigue: Optional[float]  # None when load_mode="instant_only"
     reflex_fired: bool
     data_provenance: str
+    load_mode: Literal["instant_only", "two_timescale"] = Field(
+        "instant_only",
+        description="instant_only: fatigue not available, load from current power only. "
+                    "two_timescale: fatigue supplied by client, full model applied."
+    )
     governance_note: str = ""
     shadow_mode: bool = False
     shadow_blocked: List[str] = []
     voice_request_expires_at: Optional[str] = Field(
         None,
-        description="ISO-8601 timestamp: the client should retry Voice before this time. "
-                    "The server is stateless — it does NOT queue or deliver the request "
-                    "automatically. The client is responsible for retrying. "
+        description="API 1.1+. ISO-8601 timestamp: retry Voice before this time. "
+                    "Server is stateless — it does NOT queue or deliver automatically. "
                     "Only set when voice_requested=True and Voice was blocked."
+    )
+    voice_retry_before: Optional[str] = Field(
+        None,
+        description="Deprecated (API 1.x). Same value as voice_request_expires_at. "
+                    "Will be removed in API 2.0. Use voice_request_expires_at instead.",
+        json_schema_extra={"deprecated": True},
     )
 
 

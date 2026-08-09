@@ -146,33 +146,28 @@ def test_recovery_phase_opens_more_channels(pipeline):
 
 
 # ---------------------------------------------------------------------------
-# run.py integration
+# run.py integration — single test, isolated output path via --output
 # ---------------------------------------------------------------------------
 
-def test_f1_run_exits_cleanly():
+def test_f1_run_integration(tmp_path):
+    """
+    Single subprocess call covers: exit code, required console labels, CSV content.
+    Uses --output <tmp_path> so each test run writes to its own isolated file
+    and never collides with another test or leaves state in the source tree.
+    """
+    out_csv = str(tmp_path / "ver_governed.csv")
     result = subprocess.run(
-        [sys.executable, os.path.join(FACTORY, "instances", "f1", "run.py")],
+        [sys.executable, os.path.join(FACTORY, "instances", "f1", "run.py"),
+         "--output", out_csv],
         cwd=FACTORY, capture_output=True, text=True,
     )
+    # exit code
     assert result.returncode == 0, f"run.py failed:\n{result.stderr}"
-
-
-def test_f1_run_prints_required_labels():
-    result = subprocess.run(
-        [sys.executable, os.path.join(FACTORY, "instances", "f1", "run.py")],
-        cwd=FACTORY, capture_output=True, text=True,
-    )
+    # console labels
     assert "THE CORNER" in result.stdout
     assert "THE STRAIGHT" in result.stdout
-
-
-def test_f1_run_produces_output_csv():
-    subprocess.run(
-        [sys.executable, os.path.join(FACTORY, "instances", "f1", "run.py")],
-        cwd=FACTORY, capture_output=True, text=True,
-    )
-    out_csv = os.path.join(FACTORY, "instances", "f1", "ver_governed.csv")
-    assert os.path.exists(out_csv), "ver_governed.csv not created by run.py"
+    # CSV content
+    assert os.path.exists(out_csv), "run.py did not create the output CSV"
     df = pd.read_csv(out_csv)
     for col in ["load", "attention", "Touch", "Sound", "Vision", "Presence", "Voice"]:
         assert col in df.columns, f"Missing column {col} in output CSV"

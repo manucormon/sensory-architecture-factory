@@ -238,3 +238,153 @@ def test_observe_mismatched_array_lengths_rejected():
         "attention": [0.5] * 20,
     })
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# API 1.1 — fatigue / provenance / load_mode / voice alias
+# ---------------------------------------------------------------------------
+
+_CYCLING_BASE = {
+    "power_w": 170.0,
+    "ftp_w": 208.0,
+    "gradient_pct": 0.0,
+    "phase": "flat",
+    "shift_elapsed_s": 1800.0,
+    "data_provenance": "REAL",
+}
+
+
+def test_cycling_fatigue_without_provenance_returns_422():
+    """Supplying fatigue without fatigue_provenance must be rejected."""
+    r = client.post("/instances/cycling/govern", json={
+        **_CYCLING_BASE,
+        "fatigue": 0.4,
+        # fatigue_provenance intentionally absent
+    })
+    assert r.status_code == 422
+
+
+def test_cycling_provenance_without_fatigue_returns_422():
+    """Supplying fatigue_provenance without fatigue must be rejected."""
+    r = client.post("/instances/cycling/govern", json={
+        **_CYCLING_BASE,
+        "fatigue_provenance": "DECLARED",
+        # fatigue intentionally absent
+    })
+    assert r.status_code == 422
+
+
+def test_cycling_both_absent_is_instant_only():
+    """When neither fatigue nor provenance is sent → instant_only, fatigue=null."""
+    r = client.post("/instances/cycling/govern", json=_CYCLING_BASE)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["load_mode"] == "instant_only"
+    assert body["fatigue"] is None
+
+
+def test_cycling_both_present_is_two_timescale():
+    """When both fatigue and provenance are present → two_timescale, fatigue set."""
+    r = client.post("/instances/cycling/govern", json={
+        **_CYCLING_BASE,
+        "fatigue": 0.35,
+        "fatigue_provenance": "DECLARED",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["load_mode"] == "two_timescale"
+    assert body["fatigue"] is not None
+    assert 0.0 <= body["fatigue"] <= 1.0
+
+
+def test_cycling_high_fatigue_raises_load():
+    """
+    High fatigue must produce higher load than no fatigue.
+    Two-timescale model: load = 1 - (1 - 0.70*instant)(1 - 0.55*fatigue).
+    Instant-only:         load = instant.
+    Both should be non-equal for the same power sample.
+    """
+    r_no_fatigue = client.post("/instances/cycling/govern", json=_CYCLING_BASE)
+    r_high_fatigue = client.post("/instances/cycling/govern", json={
+        **_CYCLING_BASE,
+        "fatigue": 0.80,
+        "fatigue_provenance": "DECLARED",
+    })
+    assert r_no_fatigue.status_code == 200
+    assert r_high_fatigue.status_code == 200
+    load_no   = r_no_fatigue.json()["load"]
+    load_high = r_high_fatigue.json()["load"]
+    assert load_high > load_no, (
+        f"High fatigue ({load_high:.4f}) should produce higher load "
+        f"than no fatigue ({load_no:.4f})"
+    )
+
+
+def test_cycling_voice_retry_before_equals_expires_at():
+    """voice_retry_before must equal voice_request_expires_at (deprecated alias)."""
+    r = client.post("/instances/cycling/govern", json={
+        **_CYCLING_BASE,
+        "power_w": 280.0,          # high power → high load → Voice blocked
+        "phase": "climb",
+        "voice_requested": True,
+        "fatigue": 0.70,
+        "fatigue_provenance": "DECLARED",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    # If Voice is blocked, both fields must be set and equal
+    if body.get("voice_request_expires_at") is not None:
+        assert body["voice_retry_before"] == body["voice_request_expires_at"], (
+            "voice_retry_before must be identical to voice_request_expires_at"
+        )
+
+
+def test_enmax_voice_retry_before_equals_expires_at():
+    """ENMAX endpoint also exposes the deprecated alias with the same value."""
+    r = client.post("/instances/enmax/govern", json={
+        "active_incidents": 25,
+        "queue_depth": 40,
+        "p1_active": False,
+        "crew_available": 0.10,
+        "shift_elapsed_h": 11.5,
+        "voice_requested": True,
+        "data_provenance": "DECLARED",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    if body.get("voice_request_expires_at") is not None:
+        assert body["voice_retry_before"] == body["voice_request_expires_at"]
+
+
+def test_enmax_response_has_load_mode():
+    """ENMAX response must include load_mode=two_timescale."""
+    r = client.post("/instances/enmax/govern", json={
+        "active_incidents": 5,
+        "queue_depth": 2,
+        "p1_active": False,
+        "crew_available": 0.70,
+        "shift_elapsed_h": 6.0,
+        "data_provenance": "DECLARED",
+    })
+    assert r.status_code == 200
+    assert r.json()["load_mode"] == "two_timescale"
+
+
+def test_api_version_is_1_1_0():
+    """OpenAPI spec must declare version 1.1.0."""
+    r = client.get("/openapi.json")
+    assert r.status_code == 200
+    assert r.json()["info"]["version"] == "1.1.0"
+
+
+def test_voice_retry_before_deprecated_in_openapi():
+    """OpenAPI schema must mark voice_retry_before as deprecated."""
+    r = client.get("/openapi.json")
+    assert r.status_code == 200
+    schema = r.json()
+    # Find DomainGovernResponse schema
+    gov_schema = schema["components"]["schemas"]["DomainGovernResponse"]
+    field = gov_schema["properties"].get("voice_retry_before", {})
+    assert field.get("deprecated") is True, (
+        "voice_retry_before must be marked deprecated in the OpenAPI schema"
+    )

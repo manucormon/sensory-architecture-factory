@@ -5,6 +5,7 @@ core.governance, and reproduces the same console output and
 ver_governed.csv as the original governance_engine.py.
 """
 
+import argparse
 import os
 import sys
 
@@ -45,7 +46,12 @@ def describe(i, label):
     print(f"    channels speaking: {', '.join(chans) if chans else 'SILENCE'}")
 
 
-if __name__ == "__main__":
+def _default_output() -> str:
+    return os.path.join(os.path.dirname(__file__), "ver_governed.csv")
+
+
+def main(output_path=None):
+    out = output_path or _default_output()
     print("=" * 64)
     print(f"ATTENTION-GOVERNANCE ENGINE — {GOVERNED_DRIVER}, Abu Dhabi 2021 final lap")
     print("=" * 64)
@@ -58,6 +64,16 @@ if __name__ == "__main__":
     describe(corner_i, "THE CORNER  (attention near zero - bullet-time moment)")
     describe(open_i,   "THE STRAIGHT (attention open - system opens up)")
 
-    out_path = os.path.join(os.path.dirname(__file__), "ver_governed.csv")
-    ver.to_csv(out_path, index=False)
-    print(f"\nsaved per-sample decisions -> {out_path}")
+    ver.to_csv(out, index=False)
+    print(f"\nsaved per-sample decisions -> {out}")
+    return out
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="F1 governance report")
+    parser.add_argument(
+        "--output", default=None,
+        help="Path for the output CSV (default: instances/f1/ver_governed.csv)"
+    )
+    args = parser.parse_args()
+    main(output_path=args.output)
