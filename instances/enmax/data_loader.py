@@ -29,7 +29,6 @@ import math
 import random
 
 SHIFT_DURATION_S = 43_200    # 12 hours
-_RNG = random.Random(42)
 
 
 # Phase definitions: (name, start_h, end_h, base_incidents, base_queue, p1_prob)
@@ -64,25 +63,25 @@ def _is_p1(t: int) -> bool:
     return False
 
 
-def load() -> list:
+def load(seed: int = 42) -> list:
     """
     Return a list of sample dicts for a 12-hour dispatcher shift.
     All values are DECLARED — no real CAD system behind this.
-    Reproducible: re-seeds the RNG at the start of each call.
+    Reproducible: uses a local RNG instance, safe for concurrent calls.
     """
-    _RNG.seed(42)
+    rng = random.Random(seed)
     samples = []
     for t in range(SHIFT_DURATION_S):
         phase, base_inc, base_q, p1_prob = _phase_at(t)
 
         # Add realistic noise around the phase baseline
-        noise_inc = _RNG.randint(-1, 2)
-        noise_q   = _RNG.randint(-1, 1)
+        noise_inc = rng.randint(-1, 2)
+        noise_q   = rng.randint(-1, 1)
         active_incidents = max(0, base_inc + noise_inc)
         queue_depth      = max(0, base_q + noise_q)
 
         # P1 from hard-coded windows + rare stochastic P1
-        p1_active = _is_p1(t) or (_RNG.random() < p1_prob)
+        p1_active = _is_p1(t) or (rng.random() < p1_prob)
 
         # Crew availability: high at start, drops during storm
         if phase == "storm_event":
@@ -90,7 +89,7 @@ def load() -> list:
         elif phase == "late_shift_wind":
             crew_available = 0.85
         else:
-            crew_available = min(1.0, 0.80 + _RNG.uniform(-0.05, 0.10))
+            crew_available = min(1.0, 0.80 + rng.uniform(-0.05, 0.10))
 
         samples.append({
             "time_s":           t,

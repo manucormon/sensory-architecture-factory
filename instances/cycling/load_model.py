@@ -46,14 +46,17 @@ def compute_load(df: pd.DataFrame, ftp_w: float) -> tuple:
     # --- Timescale 1: instantaneous ---
     # PROXY: intensity factor (IF = power / FTP) as cognitive demand proxy.
     intensity_factor = np.clip(power / ftp_w, 0, 1.2) / 1.2
-    # Skip smoothing when array is shorter than the kernel: np.convolve mode="same"
-    # divides edge values by the full kernel length even when overlap is partial,
-    # producing unrealistically low loads for batches of 2-4 samples.
-    _KERNEL = 5
-    if len(intensity_factor) >= _KERNEL:
-        instant_load = np.convolve(intensity_factor, np.ones(_KERNEL) / _KERNEL, mode="same")
-    else:
-        instant_load = intensity_factor.copy()
+    # Causal rolling mean with min_periods=1: no edge artifacts, no jump in
+    # behaviour between len=4 and len=5, len(output) always == len(input).
+    # Using pandas Series for the rolling window — avoids np.convolve mode="same"
+    # which divides boundary values by the full kernel length even with partial overlap.
+    import pandas as _pd
+    instant_load = (
+        _pd.Series(intensity_factor)
+        .rolling(window=5, min_periods=1)
+        .mean()
+        .to_numpy()
+    )
     instant_load = np.clip(instant_load, 0, 1)
 
     # --- Timescale 2: accumulated fatigue ---

@@ -226,10 +226,10 @@ def govern_enmax(req: ENMAXGovernRequest):
     _store(txn_id, "enmax", trace)
 
     voice_blocked = req.voice_requested and "Voice" not in result and "Voice:pulse" not in result
-    voice_retry_before = None
+    voice_request_expires_at = None
     if voice_blocked:
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=req.voice_ttl_s)
-        voice_retry_before = expires_at.isoformat()
+        voice_request_expires_at = expires_at.isoformat()
 
     note = ""
     if req.p1_active and "Touch" in result:
@@ -237,7 +237,7 @@ def govern_enmax(req: ENMAXGovernRequest):
     elif req.voice_requested and "Voice" in result:
         note = "Voice admitted — cognitive budget available for supervisor contact."
     elif voice_blocked:
-        note = f"Voice blocked — budget insufficient. Request expires at {voice_retry_before}."
+        note = f"Voice blocked — budget insufficient. Request expires at {voice_request_expires_at}."
 
     shadow_blocked = []
     if req.observe_only:
@@ -256,7 +256,7 @@ def govern_enmax(req: ENMAXGovernRequest):
         governance_note=note,
         shadow_mode=req.observe_only,
         shadow_blocked=shadow_blocked,
-        voice_retry_before=voice_retry_before,
+        voice_request_expires_at=voice_request_expires_at,
     )
 
 
@@ -282,16 +282,13 @@ def govern_cycling(req: CyclingGovernRequest):
         "gradient_pct": req.gradient_pct,
         "phase":        req.phase,
     }])
-    instant_arr, _fatigue_arr, load_arr, attention_arr = cycling_load(df, req.ftp_w)
+    instant_arr, _ignored_fatigue, load_arr, attention_arr = cycling_load(df, req.ftp_w)
     instant = float(instant_arr[0])
 
-    # shift_elapsed_s drives accumulated fatigue — the single-sample load model
-    # always returns fatigue=0.0 because there is no history. Estimate it from
-    # elapsed ride time using the same TSS-inspired shape as the batch model:
-    # fatigue rises linearly with time at sustained FTP, normalized to a 3-hour ride.
-    _TSS_NORM = 3600 * 1.0 ** 2 / 0.85
-    tss_estimate = (req.power_w / req.ftp_w) ** 2 * req.shift_elapsed_s
-    fatigue = float(min(tss_estimate / _TSS_NORM, 1.0))
+    # This endpoint has no ride history. The client MUST supply accumulated fatigue
+    # (DECLARED). Recomputing fatigue from current power × elapsed time would
+    # assume constant effort throughout — an invalid fabrication of history.
+    fatigue = req.fatigue  # DECLARED — client's responsibility to compute and pass
 
     _W_FATIGUE = 0.55
     _W_INSTANT = 0.70
@@ -309,16 +306,16 @@ def govern_cycling(req: CyclingGovernRequest):
     _store(txn_id, "cycling", trace)
 
     voice_blocked = req.voice_requested and "Voice" not in result
-    voice_retry_before = None
+    voice_request_expires_at = None
     if voice_blocked:
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=req.voice_ttl_s)
-        voice_retry_before = expires_at.isoformat()
+        voice_request_expires_at = expires_at.isoformat()
 
     note = ""
     if req.phase == "descent" and "Voice" in result:
         note = "Descent recovery window — Voice open for directeur sportif contact."
     elif req.phase == "climb" and "Voice" not in result:
-        note = f"Climb load — Voice blocked. Request expires at {voice_retry_before}." \
+        note = f"Climb load — Voice blocked. Request expires at {voice_request_expires_at}." \
                if voice_blocked else "Climb load — Voice blocked."
 
     shadow_blocked = []
@@ -338,7 +335,7 @@ def govern_cycling(req: CyclingGovernRequest):
         governance_note=note,
         shadow_mode=req.observe_only,
         shadow_blocked=shadow_blocked,
-        voice_retry_before=voice_retry_before,
+        voice_request_expires_at=voice_request_expires_at,
     )
 
 

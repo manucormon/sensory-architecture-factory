@@ -2,7 +2,7 @@
 Tests for the three features added after LLM council review:
   1. govern_explain() — decision trace
   2. /why/{transaction_id} — audit endpoint
-  3. voice_ttl_s / voice_retry_before — TTL for blocked Voice
+  3. voice_ttl_s / voice_request_expires_at — TTL for blocked Voice
   4. observe_only / shadow_mode — shadow mode deployment flag
 """
 
@@ -160,10 +160,10 @@ def test_why_generic_govern_also_stored():
 
 
 # ---------------------------------------------------------------------------
-# 3. voice_ttl_s / voice_retry_before — TTL
+# 3. voice_ttl_s / voice_request_expires_at — TTL
 # ---------------------------------------------------------------------------
 
-def test_voice_retry_before_set_when_blocked():
+def test_voice_request_expires_at_set_when_blocked():
     # Very low budget so Voice is blocked
     r = client.post("/instances/enmax/govern", json={
         "active_incidents": 9,
@@ -177,11 +177,11 @@ def test_voice_retry_before_set_when_blocked():
     body = r.json()
     # P1 saturates load — Voice should be blocked (no budget)
     if "Voice" not in body["active_channels"] and "Voice:pulse" not in body["active_channels"]:
-        assert body["voice_retry_before"] is not None
-    # If Voice:pulse fired (risk_present path), voice_retry_before may be None — that's fine
+        assert body["voice_request_expires_at"] is not None
+    # If Voice:pulse fired (risk_present path), voice_request_expires_at may be None — that's fine
 
 
-def test_voice_retry_before_none_when_voice_admitted():
+def test_voice_request_expires_at_none_when_voice_admitted():
     # Low load, voice requested, should be admitted
     r = client.post("/instances/enmax/govern", json={
         "active_incidents": 1,
@@ -194,7 +194,7 @@ def test_voice_retry_before_none_when_voice_admitted():
     })
     body = r.json()
     if "Voice" in body["active_channels"]:
-        assert body["voice_retry_before"] is None
+        assert body["voice_request_expires_at"] is None
 
 
 def test_voice_ttl_default_is_30s():

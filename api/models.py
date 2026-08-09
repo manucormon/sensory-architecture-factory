@@ -106,7 +106,14 @@ class CyclingGovernRequest(BaseModel):
                                    description="Road gradient %, MEASURED from GPS")
     phase:           Literal["climb", "descent", "flat"] = Field(..., description="climb | descent | flat")
     shift_elapsed_s: float = Field(..., ge=0.0,
-                                   description="Seconds elapsed in the ride")
+                                   description="Seconds elapsed in the ride (informational; "
+                                               "used for audit trail, not fatigue computation)")
+    fatigue: float = Field(
+        0.0, ge=0.0, le=1.0,
+        description="Accumulated fatigue [0..1], DECLARED by the client. "
+                    "The server has no ride history — the client must compute and supply this. "
+                    "0.0 means 'not provided / start of session'."
+    )
     voice_requested: bool = False
     voice_ttl_s:     float = Field(
         30.0, ge=1.0,
@@ -135,9 +142,11 @@ class DomainGovernResponse(BaseModel):
     governance_note: str = ""
     shadow_mode: bool = False
     shadow_blocked: List[str] = []
-    voice_retry_before: Optional[str] = Field(
+    voice_request_expires_at: Optional[str] = Field(
         None,
-        description="ISO-8601 timestamp: Voice request expires at this time. "
+        description="ISO-8601 timestamp: the client should retry Voice before this time. "
+                    "The server is stateless — it does NOT queue or deliver the request "
+                    "automatically. The client is responsible for retrying. "
                     "Only set when voice_requested=True and Voice was blocked."
     )
 
@@ -163,12 +172,12 @@ class ObserveRequest(BaseModel):
     fatigue:   Optional[List[float]] = None
     sample_rate_hz: int = Field(1, ge=1)
     sustained_load_threshold:  float = Field(0.80, ge=0.0, le=1.0)
-    sustained_load_window_s:   float = Field(900.0, ge=0.0)
+    sustained_load_window_s:   float = Field(900.0, gt=0.0)
     fatigue_ceiling:           float = Field(0.70, ge=0.0, le=1.0)
     attention_floor:           float = Field(0.15, ge=0.0, le=1.0)
-    attention_floor_window_s:  float = Field(300.0, ge=0.0)
+    attention_floor_window_s:  float = Field(300.0, gt=0.0)
     recovery_threshold:        float = Field(0.55, ge=0.0, le=1.0)
-    recovery_window_s:         float = Field(60.0, ge=0.0)
+    recovery_window_s:         float = Field(60.0, gt=0.0)
 
 
 class AlertOut(BaseModel):
