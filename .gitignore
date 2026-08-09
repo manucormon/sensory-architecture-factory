@@ -26,6 +26,12 @@ instances/*/data/*.json
 # output of the GoldenCheetah OpenData pipeline (anonymised, open-access).
 # Source: https://osf.io/6hfpz/ (DOI 10.17605/OSF.IO/6HFPZ)
 !instances/cycling/data/gc_opendata_ride.csv
+!instances/cycling/data/real_ride_sample.csv
+
+# Exception: F1 Abu Dhabi 2021 last-lap telemetry (PROXY — reconstructed from
+# public race data for governance research). Required for tests in a clean clone.
+!instances/f1/data/abudhabi2021_VER_lastlap.csv
+!instances/f1/data/abudhabi2021_HAM_lastlap.csv
 
 # Derived output CSVs produced by run.py (ver_governed.csv etc.)
 # Baselines in tests/fixtures/ ARE committed — they are the contract.
