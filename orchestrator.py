@@ -168,8 +168,15 @@ def cmd_verify(args) -> int:
                   "Run 'new' first.", file=sys.stderr)
             return 1
         test_file = entry.get("test_file")
-        print(f"[orchestrator] verifying instance '{domain}' ...")
-        result = verifier.run_pytest_only(test_file)
+        print(f"[orchestrator] verifying instance '{domain}' "
+              "(security check + scoped tests) ...")
+        # Always run security — skipping it and marking verified is misleading.
+        security_result = verifier.run_full_gate()
+        tests_result = verifier.run_pytest_only(test_file)
+        # Merge: tests from scoped run, security from full gate.
+        tests_result.security_passed = security_result.security_passed
+        tests_result.security_findings = security_result.security_findings
+        result = tests_result
     else:
         print("[orchestrator] running full gate (security + all tests) ...")
         result = verifier.run_full_gate()

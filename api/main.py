@@ -282,11 +282,21 @@ def govern_cycling(req: CyclingGovernRequest):
         "gradient_pct": req.gradient_pct,
         "phase":        req.phase,
     }])
-    instant_arr, fatigue_arr, load_arr, attention_arr = cycling_load(df, req.ftp_w)
-    instant   = float(instant_arr[0])
-    fatigue   = float(fatigue_arr[0])
-    load      = float(load_arr[0])
-    attention = float(attention_arr[0])
+    instant_arr, _fatigue_arr, load_arr, attention_arr = cycling_load(df, req.ftp_w)
+    instant = float(instant_arr[0])
+
+    # shift_elapsed_s drives accumulated fatigue — the single-sample load model
+    # always returns fatigue=0.0 because there is no history. Estimate it from
+    # elapsed ride time using the same TSS-inspired shape as the batch model:
+    # fatigue rises linearly with time at sustained FTP, normalized to a 3-hour ride.
+    _TSS_NORM = 3600 * 1.0 ** 2 / 0.85
+    tss_estimate = (req.power_w / req.ftp_w) ** 2 * req.shift_elapsed_s
+    fatigue = float(min(tss_estimate / _TSS_NORM, 1.0))
+
+    _W_FATIGUE = 0.55
+    _W_INSTANT = 0.70
+    load      = float(min(1 - (1 - _W_INSTANT * instant) * (1 - _W_FATIGUE * fatigue), 1.0))
+    attention = 1.0 - load
 
     result, trace = govern_explain(
         CYCLING_CHANNELS,

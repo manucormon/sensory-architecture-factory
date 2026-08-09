@@ -31,16 +31,30 @@ TEMPLATE_FILES = ["data_loader.py", "load_model.py", "reflex_trigger.py", "confi
                   "perception.py"]
 
 
+import re as _re
+
+_SAFE_DOMAIN = _re.compile(r'^[a-z_][a-z0-9_]{0,63}$')
+
+
 def scaffold(domain: str, *, has_recovery_window: bool,
              has_multi_timescale_load: bool) -> Path:
     """
     Create instances/<domain>/ from the template.
 
     Returns the path to the new instance directory.
+    Raises ValueError if domain contains path-traversal characters.
     Raises FileExistsError if the directory already exists — the orchestrator
     checks the registry first, but this is the filesystem safety net.
     """
+    if not _SAFE_DOMAIN.match(domain):
+        raise ValueError(
+            f"Invalid domain name '{domain}'. "
+            "Use lowercase letters, digits, and underscores only (start with a letter)."
+        )
     dest = INSTANCES_DIR / domain
+    # Paranoia check: ensure resolved path stays under INSTANCES_DIR.
+    if not str(dest.resolve()).startswith(str(INSTANCES_DIR.resolve())):
+        raise ValueError(f"Domain name '{domain}' escapes the instances directory.")
     if dest.exists():
         raise FileExistsError(
             f"instances/{domain}/ already exists. "

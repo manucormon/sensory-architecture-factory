@@ -29,7 +29,7 @@ import math
 import random
 
 SHIFT_DURATION_S = 43_200    # 12 hours
-_RNG = random.Random(42)     # fixed seed for reproducibility
+_RNG = random.Random(42)
 
 
 # Phase definitions: (name, start_h, end_h, base_incidents, base_queue, p1_prob)
@@ -66,9 +66,11 @@ def _is_p1(t: int) -> bool:
 
 def load() -> list:
     """
-    Return a list of sample dicts for a 12-hour ENMAX dispatcher shift.
+    Return a list of sample dicts for a 12-hour dispatcher shift.
     All values are DECLARED — no real CAD system behind this.
+    Reproducible: re-seeds the RNG at the start of each call.
     """
+    _RNG.seed(42)
     samples = []
     for t in range(SHIFT_DURATION_S):
         phase, base_inc, base_q, p1_prob = _phase_at(t)

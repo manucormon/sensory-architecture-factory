@@ -246,11 +246,12 @@ def govern_explain(channels, budget, reflex_active, *,
             })
             trace["voice_path"] = "urgent_pulse"
         elif voice_requested and remaining >= vcost:
+            remaining -= vcost
             active.append("Voice")
             trace["channels"].append({
                 "name": "Voice", "priority": vprio, "cost": vcost,
                 "admitted": True, "reason": "budget_ok",
-                "budget_after": round(remaining - vcost, 4),
+                "budget_after": round(remaining, 4),
             })
             trace["voice_path"] = "elective_admitted"
         elif voice_requested:

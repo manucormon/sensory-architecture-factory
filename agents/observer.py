@@ -115,14 +115,18 @@ class Observer:
         recovery_window_s: float = 60,
         callback: Optional[Callable[[Alert], None]] = None,
     ):
+        if any(w <= 0 for w in (sustained_load_window_s,
+                                attention_floor_window_s,
+                                recovery_window_s)):
+            raise ValueError("All window_s parameters must be > 0")
         self.hz = sample_rate_hz
         self.shl_thresh = sustained_load_threshold
-        self.shl_window = int(sustained_load_window_s * sample_rate_hz)
+        self.shl_window = max(1, int(sustained_load_window_s * sample_rate_hz))
         self.fat_ceil = fatigue_ceiling
         self.attn_floor = attention_floor
-        self.attn_window = int(attention_floor_window_s * sample_rate_hz)
+        self.attn_window = max(1, int(attention_floor_window_s * sample_rate_hz))
         self.rec_thresh = recovery_threshold
-        self.rec_window = int(recovery_window_s * sample_rate_hz)
+        self.rec_window = max(1, int(recovery_window_s * sample_rate_hz))
         self.callback = callback or _default_callback
 
     def scan(
@@ -177,13 +181,16 @@ class Observer:
                 (fatigue[1:] >= self.fat_ceil) & (fatigue[:-1] < self.fat_ceil)
             )[0]
             for idx in crossings[:1]:  # first crossing only
+                # idx points to the sample BEFORE the crossing; idx+1 is the
+                # first sample at or above the ceiling.
+                trigger = int(idx) + 1
                 a = Alert(
                     alert_type="FATIGUE_CEILING",
-                    sample_index=int(idx),
-                    elapsed_s=idx / self.hz,
-                    load=float(load[idx]),
-                    attention=float(attention[idx]),
-                    fatigue=float(fatigue[idx]),
+                    sample_index=trigger,
+                    elapsed_s=trigger / self.hz,
+                    load=float(load[trigger]),
+                    attention=float(attention[trigger]),
+                    fatigue=float(fatigue[trigger]),
                     message=(
                         f"Accumulated fatigue crossed {self.fat_ceil:.0%}. "
                         "Multi-hour demand is near exhaustion — schedule a break."
