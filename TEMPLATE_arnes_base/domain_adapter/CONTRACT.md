@@ -102,6 +102,28 @@ what the same instantaneous signal means at hour 5 versus hour 1 of a
 stage. If your domain has this, `load_model.py` needs two components,
 not one — declare it, don't silently average it away.
 
+## 7. Latency budget (Guardrail 8)
+
+Every domain adapter must declare two latency figures in `NOTES.md`:
+
+**`latency_ms`** — the maximum acceptable round-trip from signal
+acquisition to governance decision, in milliseconds. Set this to match
+your domain's reaction-time constraint, not to whatever the harness
+happens to achieve today.  F1's tight real-time constraint (one lap ≈
+90 s, intervention window ≈ seconds) requires low latency_ms; a 12-hour
+dispatcher shift can tolerate higher values.  If you don't know the
+right number, write your best guess and flag it as `DECLARED`.
+
+**`dt_ahead`** — the planning lookahead: how many seconds in the future
+the plan signal targets.  The cycling instance uses `dt_ahead = 30 s`
+(next climb segment); F1 uses `dt_ahead = 0` (immediate guidance).
+An adapter that leaves `dt_ahead` unstated is implicitly assuming
+instant-only mode — make that assumption explicit rather than silent.
+
+Governance output that exceeds `latency_ms` should be logged and
+flagged, not silently dropped. Document what happens to a late decision
+in your domain: is it discarded, queued, or still delivered?
+
 ## A finding worth re-checking for every new domain
 Under F1's tuned costs, a FRESH Voice request (nothing queued) fails
 to be admitted even at the most open moment in the whole lap (0.93
