@@ -7,8 +7,9 @@ nothing else about your domain.
 ## 1. `data_loader.py`
 Read your domain's raw signal (telemetry, sensor feed, video-derived
 data, whatever exists) into whatever shape `load_model.py` needs.
-F1 reference: `instances/f1/data_loader.py` — reads two CSVs, coerces
-types. Yours will look nothing like this; that's expected.
+F1 test reference: `instances/f1/data_loader.py` — reads one redistributable
+DECLARED synthetic fixture and coerces its types. A production adapter must
+load its own legally usable domain source; the fixture is not real telemetry.
 
 ## 2. `perception.py`
 Sits between `data_loader.py` and `load_model.py` in the pipeline. Its
@@ -19,10 +20,10 @@ in this domain — without doing any load arithmetic itself.
 Every field in the perceptual state must carry one of three labels:
 
   **MEASURED** — the value arrived pre-computed from an external system;
-  nobody in this repo tracked anything. F1's `DistanceToDriverAhead`
-  is the reference example: the FIA timing system computed it; the
-  telemetry file delivered it; perception.py reads it through. High
-  confidence; the external system is the source of truth.
+  nobody in this repo tracked anything. This label is appropriate only when
+  the external system and its provenance are actually available. The bundled
+  F1 fixture is synthetic, so its `DistanceToDriverAhead` is DECLARED and must
+  not be cited as a MEASURED reference.
 
   **TRACKED** — the value was actively computed here, from raw sensor or
   video input, by code in this repo. As of this writing, no instance in
@@ -48,17 +49,17 @@ doesn't, `perception.py` may be a thin passthrough that returns the
 raw samples unchanged — declare that plainly in the docstring rather
 than inventing structure to fill the slot.
 
-F1 reference: `instances/f1/perception.py` — a thin passthrough that
-reads `DistanceToDriverAhead` (MEASURED) directly from the telemetry
-DataFrame. No tracking, no prediction.
+F1 test reference: `instances/f1/perception.py` — a thin passthrough that
+reads synthetic `DistanceToDriverAhead` (DECLARED) from the fixture DataFrame.
+No tracking, no prediction.
 
 ## 3. `load_model.py`
 The honest core of the adapter: derive a `load` array (0..1) and its
 complement `attention = 1 - load` from your domain's raw signal.
 Label explicitly whether each input is REAL (measured), a PROXY
 (stands in for something you don't have), or DECLARED (a design
-convention) — same discipline as F1's telemetry-as-proxy-for-biometrics
-note. Never blur the three.
+convention). The bundled F1 scenario is DECLARED synthetic data and its load
+model is a PROXY for cognitive demand. Never blur the three.
 
 ## 4. `reflex_trigger.py`
 Define the one condition that bypasses the budget entirely, if your
@@ -85,8 +86,8 @@ the Voice-cost finding below.
 
 **Does this domain have a structured recovery window?**
 A phase where load reliably drops and stays down long enough for a
-deferred Voice request to resolve. F1 has one (the straight, seconds
-long, repeats every lap). Tennis has one, explicit and ruled (20-25s
+deferred Voice request to resolve. The synthetic F1 scenario declares one
+(the straight, seconds long, repeats every lap). Tennis has one, explicit and ruled (20-25s
 between points, 90s on changeovers) — some tennis formats even permit
 verbal coaching precisely inside this window, matching Voice's role.
 Base jumping likely has none — the event is seconds long and may stay
@@ -96,7 +97,7 @@ If your domain has no recovery window, say so — don't build a queue
 that will never resolve.
 
 **Is load single-timescale or does it stack?**
-F1's load is a single, fast, moment-to-moment signal. Cycling adds a
+The synthetic F1 model declares a single, fast, moment-to-moment signal. Cycling adds a
 second, slow layer on top: hours of accumulated fatigue that changes
 what the same instantaneous signal means at hour 5 versus hour 1 of a
 stage. If your domain has this, `load_model.py` needs two components,
@@ -125,7 +126,7 @@ flagged, not silently dropped. Document what happens to a late decision
 in your domain: is it discarded, queued, or still delivered?
 
 ## A finding worth re-checking for every new domain
-Under F1's tuned costs, a FRESH Voice request (nothing queued) fails
+Under the DECLARED synthetic F1 model's tuned costs, a FRESH Voice request (nothing queued) fails
 to be admitted even at the most open moment in the whole lap (0.93
 attention) — Sound+Vision+Presence consume the budget first by
 priority order. That was a real result from testing `govern_hybrid()`,
